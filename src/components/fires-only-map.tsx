@@ -350,7 +350,7 @@ export function FiresOnlyMap({
     const id = window.setTimeout(() => {
       map.stop();
       map.resize();
-      map.fitBounds(b, { padding: 72, maxZoom: 11, duration: 900 });
+      map.fitBounds(b, { padding: 72, maxZoom: 14, duration: 900 });
     }, 0);
 
     return () => window.clearTimeout(id);
