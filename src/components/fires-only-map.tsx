@@ -359,7 +359,7 @@ export function FiresOnlyMap({
   return (
     <div
       ref={containerRef}
-      className="h-dvh w-full min-w-0 touch-none"
+      className="h-full min-h-0 w-full min-w-0 touch-none"
       aria-label="Fire activity map"
     />
   );

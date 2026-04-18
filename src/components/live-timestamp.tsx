@@ -20,7 +20,13 @@ function formatLocal() {
   };
 }
 
-export function LiveTimestamp() {
+export function LiveTimestamp({
+  compact = false,
+  className = "",
+}: {
+  compact?: boolean;
+  className?: string;
+}) {
   const [stamp, setStamp] = useState<ReturnType<typeof formatLocal> | null>(
     null,
   );
@@ -31,8 +37,25 @@ export function LiveTimestamp() {
     return () => window.clearInterval(id);
   }, []);
 
+  if (compact) {
+    return (
+      <div
+        className={`pointer-events-none font-tactical text-[8px] leading-tight text-zinc-400 ${className}`}
+      >
+        <span className="block uppercase tracking-[0.15em] text-zinc-600">
+          Local
+        </span>
+        <span className="tabular-nums text-[10px] font-semibold text-orange-200/90">
+          {stamp?.time ?? "—"}
+        </span>
+      </div>
+    );
+  }
+
   return (
-    <div className="pointer-events-none rounded border border-white/10 bg-black/70 px-3 py-2 font-mono text-[11px] text-zinc-200 shadow-lg backdrop-blur-md">
+    <div
+      className={`pointer-events-none rounded border border-white/10 bg-black/70 px-3 py-2 font-mono text-[11px] text-zinc-200 shadow-lg backdrop-blur-md ${className}`}
+    >
       <div className="text-[9px] font-semibold uppercase tracking-[0.2em] text-zinc-500">
         Local
       </div>

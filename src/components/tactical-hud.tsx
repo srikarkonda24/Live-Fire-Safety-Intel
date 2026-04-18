@@ -1,14 +1,36 @@
 "use client";
 
+import { useState } from "react";
 import type { SafetyBriefResponse } from "@/lib/briefing-reasoning-types";
 import type { AddressBriefingAnchor, SafetyLevel } from "@/lib/briefing-presets";
-
-export type HudPanel = "surveillance" | "meteorology" | "operations";
-
-const BLAST = "cubic-bezier(0.22, 0.61, 0.36, 1)";
+import { LiveTimestamp } from "@/components/live-timestamp";
 
 const R = 38;
 const C = 2 * Math.PI * R;
+
+/** Shared top offset so Intel + Met align (1.25rem = top-5). */
+const HUD_TOP = "top-[1.25rem]";
+
+const hudShell =
+  "hud-panel font-tactical absolute z-[55] flex max-h-[min(calc(100vh-3rem),52rem)] flex-col overflow-hidden rounded-sm text-[8px] leading-tight text-zinc-300";
+
+const hdr =
+  "font-mono text-[6px] font-bold uppercase tracking-[0.1em] text-amber-500/80";
+
+const subHdr =
+  "mb-0 font-mono text-[6px] font-bold uppercase tracking-[0.1em] text-zinc-500";
+
+function ActionChevron() {
+  return (
+    <svg
+      className="mt-0.5 h-2 w-2 shrink-0 text-amber-500/85"
+      viewBox="0 0 8 8"
+      aria-hidden
+    >
+      <path fill="currentColor" d="M1.5 0.5 L6.5 4 L1.5 7.5 z" />
+    </svg>
+  );
+}
 
 function RadialGauge({
   value,
@@ -26,10 +48,10 @@ function RadialGauge({
   const t = max <= 0 ? 0 : Math.min(1, Math.max(0, value / max));
   const dash = C * t;
   return (
-    <div className="flex flex-col items-center gap-1">
+    <div className="flex w-[4.5rem] shrink-0 flex-col items-center gap-0.5">
       <svg
         viewBox="0 0 100 100"
-        className="h-24 w-24 shrink-0 drop-shadow-[0_0_12px_rgba(251,191,36,0.25)] md:h-28 md:w-28"
+        className="h-14 w-14 shrink-0 drop-shadow-[0_0_8px_rgba(251,191,36,0.2)]"
         aria-hidden
       >
         <defs>
@@ -64,14 +86,14 @@ function RadialGauge({
           strokeWidth="0.5"
         />
       </svg>
-      <p className="font-mono text-[9px] font-bold uppercase tracking-[0.2em] text-amber-400/90">
+      <p className="max-w-[4.5rem] text-center font-mono text-[6px] font-bold uppercase tracking-[0.1em] text-amber-400/85">
         {label}
       </p>
-      <p className="font-mono text-lg font-bold tabular-nums text-amber-100 [text-shadow:0_0_14px_rgba(251,191,36,0.35)] md:text-xl">
+      <p className="font-mono text-xs font-bold tabular-nums text-amber-100 [text-shadow:0_0_8px_rgba(251,191,36,0.3)]">
         {Number.isFinite(value) ? Math.round(value) : "—"}
       </p>
       {sub ? (
-        <p className="max-w-[9rem] text-center font-mono text-[9px] leading-tight text-zinc-500">
+        <p className="line-clamp-2 max-w-[4.5rem] text-center font-mono text-[6px] leading-tight text-zinc-500">
           {sub}
         </p>
       ) : null}
@@ -86,18 +108,13 @@ function smokeLoad01(safety: SafetyLevel): number {
   return 0.18;
 }
 
-function riskRowClass(risk: SafetyLevel): string {
+/** Thin border + backlit-style glow; no filled chip backgrounds */
+function riskPillClass(risk: SafetyLevel): string {
   if (risk === "EXTREME" || risk === "HIGH")
-    return "text-red-400 [text-shadow:0_0_12px_rgba(248,113,113,0.45)]";
+    return "border-red-400/45 text-red-300 [text-shadow:0_0_10px_rgba(248,113,113,0.45)]";
   if (risk === "MODERATE")
-    return "text-amber-300 [text-shadow:0_0_10px_rgba(251,191,36,0.35)]";
-  return "text-emerald-300 [text-shadow:0_0_10px_rgba(52,211,153,0.35)]";
-}
-
-function riskHeadlineEmoji(risk: SafetyLevel): string {
-  if (risk === "EXTREME" || risk === "HIGH") return "🔴";
-  if (risk === "MODERATE") return "🟡";
-  return "🟢";
+    return "border-amber-400/50 text-amber-200 [text-shadow:0_0_12px_rgba(251,191,36,0.55),0_0_24px_rgba(245,158,11,0.2)]";
+  return "border-emerald-400/45 text-emerald-200 [text-shadow:0_0_10px_rgba(52,211,153,0.4)]";
 }
 
 function demoEtaHoursLabel(etaMin: number | null): string | null {
@@ -121,9 +138,6 @@ export type TacticalHudBriefing = {
 };
 
 export type TacticalHudProps = {
-  openPanel: HudPanel | null;
-  onTogglePanel: (id: HudPanel) => void;
-  onClosePanel: () => void;
   briefing: TacticalHudBriefing | null;
   onRegenerateAi: () => void;
   onClearPin: () => void;
@@ -137,9 +151,6 @@ export type TacticalHudProps = {
 };
 
 export function TacticalHud({
-  openPanel,
-  onTogglePanel,
-  onClosePanel,
   briefing,
   onRegenerateAi,
   onClearPin,
@@ -151,361 +162,321 @@ export function TacticalHud({
   aiLoading,
   aiError,
 }: TacticalHudProps) {
-  const dockBtn = (id: HudPanel, label: string) => {
-    const active = openPanel === id;
-    return (
-      <button
-        key={id}
-        type="button"
-        onClick={() => onTogglePanel(id)}
-        className={`border-r border-slate-800 px-3 py-2 font-mono text-[9px] font-bold uppercase tracking-[0.24em] last:border-r-0 md:px-5 md:text-[10px] md:tracking-[0.28em] ${
-          active
-            ? "bg-amber-950/40 text-amber-200 [text-shadow:0_0_12px_rgba(251,191,36,0.45)]"
-            : "text-amber-400/90 hover:bg-black/30 hover:text-amber-200"
-        }`}
-      >
-        {label}
-      </button>
-    );
-  };
+  const [intelOpen, setIntelOpen] = useState(true);
+  const [metOpen, setMetOpen] = useState(true);
 
-  const open = openPanel !== null;
+  const displayRisk: SafetyLevel | null = safetyBrief
+    ? safetyBrief.risk
+    : briefing?.safety ?? null;
+
+  const topActions = safetyBrief
+    ? safetyBrief.recommendedActions.slice(0, 3)
+    : [];
 
   return (
-    <>
-      <div className="pointer-events-none fixed left-0 right-0 top-0 z-[60] flex justify-center pt-3 md:pt-4">
-        <div
-          className="pointer-events-auto flex overflow-hidden rounded border border-slate-800 bg-black/70 shadow-[0_8px_32px_rgba(0,0,0,0.45)] backdrop-blur-md"
-          role="toolbar"
-          aria-label="Tactical dock"
+    <div className="pointer-events-none absolute inset-0 z-[50]">
+      {!intelOpen ? (
+        <button
+          type="button"
+          onClick={() => setIntelOpen(true)}
+          className="pointer-events-auto absolute left-0 top-[42%] z-[56] flex h-16 w-7 -translate-y-1/2 flex-col items-center justify-center gap-0.5 rounded-r-sm border border-l-0 border-[rgba(255,255,255,0.1)] bg-black/30 px-0.5 font-tactical text-[9px] text-amber-500/90 shadow-md backdrop-blur-[20px] hover:bg-black/40 hover:text-amber-300"
+          style={{ WebkitBackdropFilter: "blur(20px)" }}
+          aria-label="Expand intelligence panel"
         >
-          {dockBtn("surveillance", "Surveillance")}
-          {dockBtn("meteorology", "Meteorology")}
-          {dockBtn("operations", "Operations")}
-        </div>
-      </div>
+          <span className="text-[10px] leading-none" aria-hidden>
+            ▶
+          </span>
+          <span className="max-w-[2.5rem] text-center text-[6px] font-bold uppercase tracking-[0.1em] text-zinc-500">
+            INTEL
+          </span>
+        </button>
+      ) : null}
 
-      <div
-        className={`fixed left-0 right-0 top-0 z-[55] flex justify-center pt-[3.25rem] md:pt-14 ${
-          open ? "pointer-events-auto" : "pointer-events-none"
-        }`}
-      >
+      {intelOpen ? (
         <div
-          className={`flex h-[80vh] w-full max-w-[100vw] flex-col overflow-hidden border-x border-b border-slate-800 bg-black/40 shadow-2xl backdrop-blur-lg transition-transform duration-[720ms] ${
-            open ? "translate-y-0" : "-translate-y-full"
-          }`}
-          style={{ transitionTimingFunction: BLAST }}
+          className={`${hudShell} left-5 w-[300px] ${HUD_TOP} ${aiLoading ? "intel-regen-pulse" : ""}`}
         >
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 pt-4 md:px-8 md:pt-6">
-            {openPanel === "surveillance" && (
-              <div className="mx-auto max-w-3xl space-y-6">
-                <div>
-                  <p className="font-mono text-[10px] font-bold uppercase tracking-[0.35em] text-amber-400/80">
-                    Surveillance / Claude
-                  </p>
-                  <p className="mt-2 font-mono text-[10px] leading-relaxed text-zinc-500">
-                    Location is set from the{" "}
-                    <span className="text-amber-500/70">address field under FIRMS time</span>{" "}
-                    (bottom bar). Briefing refreshes automatically after geocode.
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {briefing ? (
-                      <button
-                        type="button"
-                        onClick={onRegenerateAi}
-                        disabled={aiLoading || geocoding || firesLoading}
-                        className="rounded border border-slate-700 bg-black/40 px-4 py-2.5 font-mono text-[10px] font-semibold uppercase tracking-widest text-zinc-300 hover:border-slate-500 disabled:opacity-40"
-                      >
-                        {aiLoading ? "Generating…" : "Regenerate AI"}
-                      </button>
-                    ) : null}
-                    {pinnedAnchor ? (
-                      <button
-                        type="button"
-                        onClick={onClearPin}
-                        className="rounded border border-slate-700 px-3 py-2 font-mono text-[10px] uppercase text-zinc-500 hover:text-zinc-300"
-                      >
-                        Clear pin
-                      </button>
-                    ) : null}
-                  </div>
-                  {geocoding ? (
-                    <p className="mt-2 font-mono text-[10px] text-orange-300/80">
-                      Resolving address…
-                    </p>
-                  ) : null}
-                </div>
+          <div className="flex shrink-0 items-start justify-between gap-2 border-b border-[rgba(255,255,255,0.1)] px-2 py-1">
+            <div className="min-w-0 pt-0.5">
+              <p className={`${hdr} text-amber-400/75`}>INTEL / CLAUDE</p>
+              {displayRisk ? (
+                <span
+                  className={`mt-1 inline-flex rounded-full border bg-transparent px-1.5 py-px font-mono text-[7px] font-bold uppercase tracking-[0.1em] ${riskPillClass(displayRisk)}`}
+                >
+                  Risk · {displayRisk}
+                </span>
+              ) : (
+                <span className="mt-1 inline-flex rounded-full border border-zinc-500/40 bg-transparent px-1.5 py-px font-mono text-[7px] uppercase tracking-[0.1em] text-zinc-500">
+                  Risk · —
+                </span>
+              )}
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <LiveTimestamp compact />
+              <button
+                type="button"
+                onClick={() => setIntelOpen(false)}
+                className="flex h-6 w-6 shrink-0 items-center justify-center rounded border border-[rgba(255,255,255,0.12)] bg-transparent text-sm leading-none text-zinc-400 hover:border-white/25 hover:text-zinc-100"
+                aria-label="Minimize intelligence panel"
+              >
+                −
+              </button>
+            </div>
+          </div>
 
-                {aiError && safetyBrief ? (
-                  <p className="rounded border border-red-500/30 bg-red-950/30 px-3 py-2 font-mono text-xs text-red-300">
-                    {aiError}
-                  </p>
-                ) : null}
-                <div className="rounded-lg border border-slate-800/80 bg-black/35 p-5 ring-1 ring-amber-500/10">
-                  {safetyBrief ? (
-                    <div className="space-y-5">
-                      <div className="flex flex-wrap items-end justify-between gap-2 border-b border-amber-500/15 pb-4">
-                        <p
-                          className={`font-mono text-2xl font-bold tracking-tight md:text-3xl ${riskRowClass(safetyBrief.risk)}`}
-                        >
-                          {riskHeadlineEmoji(safetyBrief.risk)} RISK:{" "}
-                          {safetyBrief.risk}
+          <div className="min-h-0 flex-1 overflow-hidden px-2 py-1">
+            <p className="text-[7px] leading-snug text-zinc-500">
+              Pin from{" "}
+              <span className="text-amber-500/75">FIRMS time · location</span>.
+            </p>
+            <div className="mt-1 flex flex-wrap gap-1">
+              {briefing ? (
+                <button
+                  type="button"
+                  onClick={onRegenerateAi}
+                  disabled={aiLoading || geocoding || firesLoading}
+                  className="rounded border border-[rgba(255,255,255,0.12)] bg-transparent px-1.5 py-0.5 font-mono text-[7px] font-semibold uppercase tracking-[0.1em] text-zinc-300 hover:border-white/20 disabled:opacity-40"
+                >
+                  {aiLoading ? "Regenerating…" : "Regen AI"}
+                </button>
+              ) : null}
+              {pinnedAnchor ? (
+                <button
+                  type="button"
+                  onClick={onClearPin}
+                  className="rounded border border-[rgba(255,255,255,0.1)] bg-transparent px-1.5 py-0.5 font-mono text-[7px] uppercase tracking-[0.1em] text-zinc-500 hover:text-zinc-200"
+                >
+                  Clear pin
+                </button>
+              ) : null}
+            </div>
+            {geocoding ? (
+              <p className="mt-0.5 font-mono text-[7px] text-orange-300/85">
+                Geocoding…
+              </p>
+            ) : null}
+            {safetyBriefUpdated ? (
+              <p className="mt-0.5 font-mono text-[6px] tabular-nums text-amber-600/90">
+                {safetyBriefUpdated}
+              </p>
+            ) : null}
+
+            {aiError && safetyBrief ? (
+              <p className="mt-1 border-l-2 border-red-500/45 pl-1.5 font-mono text-[7px] text-red-300">
+                {aiError}
+              </p>
+            ) : null}
+
+            <div className="mt-1.5 border-t border-[rgba(255,255,255,0.08)] pt-1.5">
+              {safetyBrief ? (
+                <div className="space-y-1.5">
+                  {briefing ? (
+                    <div className="grid grid-cols-2 font-mono text-[7px] leading-tight text-amber-100/95">
+                      <div className="border-b border-r border-[rgba(255,255,255,0.1)] py-1 pr-1">
+                        <p className={subHdr}>Fire</p>
+                        <p className="tabular-nums text-amber-200/95">
+                          {briefing.miles != null
+                            ? `${briefing.miles.toFixed(1)} mi`
+                            : "—"}
                         </p>
-                        {safetyBriefUpdated ? (
-                          <span className="font-mono text-xs tabular-nums text-amber-500/70 md:text-sm">
-                            {safetyBriefUpdated}
-                          </span>
+                        {briefing.nearest ? (
+                          <p className="truncate text-[6px] text-zinc-500">
+                            {briefing.nearest.name}
+                          </p>
                         ) : null}
                       </div>
-
-                      {briefing ? (
-                        <div className="grid grid-cols-2 gap-2 font-mono text-[11px] leading-snug text-amber-100/95 md:grid-cols-4 md:gap-3 md:text-xs">
-                          <div className="rounded border border-slate-800/90 bg-black/40 px-2.5 py-2 md:px-3">
-                            <p className="text-[9px] font-bold uppercase tracking-widest text-zinc-500">
-                              Fire distance
-                            </p>
-                            <p className="mt-1 tabular-nums text-amber-200/95">
-                              {briefing.miles != null
-                                ? `${briefing.miles.toFixed(1)} mi`
-                                : "—"}
-                            </p>
-                            {briefing.nearest ? (
-                              <p className="mt-0.5 truncate text-[10px] text-zinc-500">
-                                {briefing.nearest.name}
-                              </p>
-                            ) : null}
-                          </div>
-                          <div className="rounded border border-slate-800/90 bg-black/40 px-2.5 py-2 md:px-3">
-                            <p className="text-[9px] font-bold uppercase tracking-widest text-zinc-500">
-                              Wind
-                            </p>
-                            <p className="mt-1 tabular-nums text-amber-200/95">
-                              {briefing.anchor.weather.windMph} mph
-                            </p>
-                            <p className="mt-0.5 text-[10px] text-zinc-400">
-                              {briefing.anchor.weather.windFromTo}
-                            </p>
-                          </div>
-                          <div className="rounded border border-slate-800/90 bg-black/40 px-2.5 py-2 md:px-3">
-                            <p className="text-[9px] font-bold uppercase tracking-widest text-zinc-500">
-                              Temp
-                            </p>
-                            <p className="mt-1 tabular-nums text-amber-200/95">
-                              {briefing.anchor.weather.tempF}°F
-                            </p>
-                          </div>
-                          <div className="rounded border border-slate-800/90 bg-black/40 px-2.5 py-2 md:px-3">
-                            <p className="text-[9px] font-bold uppercase tracking-widest text-zinc-500">
-                              Demo ETA
-                            </p>
-                            <p className="mt-1 tabular-nums text-amber-200/95">
-                              {briefing.etaMin != null
-                                ? `${briefing.etaMin} min`
-                                : "—"}
-                            </p>
-                            {demoEtaHoursLabel(briefing.etaMin) ? (
-                              <p className="mt-0.5 text-[10px] text-zinc-400">
-                                {demoEtaHoursLabel(briefing.etaMin)} model-based
-                              </p>
-                            ) : null}
-                          </div>
-                        </div>
-                      ) : null}
-
-                      <section>
-                        <h3 className="font-mono text-xs font-bold uppercase tracking-[0.28em] text-amber-400/80">
-                          📍 Situation
-                        </h3>
-                        <p className="mt-2 whitespace-pre-line font-mono text-sm leading-relaxed text-amber-50/95 [text-shadow:0_0_14px_rgba(251,191,36,0.1)] md:text-base">
-                          {safetyBrief.situation}
+                      <div className="border-b border-[rgba(255,255,255,0.1)] py-1 pl-1">
+                        <p className={subHdr}>Wind</p>
+                        <p className="tabular-nums text-amber-200/95">
+                          {briefing.anchor.weather.windMph} mph
                         </p>
-                      </section>
-                      <section>
-                        <h3 className="font-mono text-xs font-bold uppercase tracking-[0.28em] text-amber-400/80">
-                          🧠 Why this matters
-                        </h3>
-                        <p className="mt-2 font-mono text-sm leading-relaxed text-amber-50/90 md:text-base">
-                          {safetyBrief.reasoning}
+                        <p className="text-[6px] text-zinc-500">
+                          {briefing.anchor.weather.windFromTo}
                         </p>
-                      </section>
-                      <section>
-                        <h3 className="font-mono text-xs font-bold uppercase tracking-[0.28em] text-amber-400/80">
-                          📊 What this means
-                        </h3>
-                        <p className="mt-2 font-mono text-sm leading-relaxed text-amber-50/90 md:text-base">
-                          {safetyBrief.whatThisMeans}
+                      </div>
+                      <div className="border-r border-[rgba(255,255,255,0.1)] py-1 pr-1">
+                        <p className={subHdr}>Temp</p>
+                        <p className="tabular-nums text-amber-200/95">
+                          {briefing.anchor.weather.tempF}°F
                         </p>
-                      </section>
-                      <section>
-                        <h3 className="font-mono text-xs font-bold uppercase tracking-[0.28em] text-amber-400/80">
-                          🚨 Suggested actions
-                        </h3>
-                        <ul className="mt-2.5 list-none space-y-2 font-mono text-sm leading-snug text-amber-100/95 md:text-base">
-                          {safetyBrief.recommendedActions.map((a, i) => (
-                            <li
-                              key={i}
-                              className="border-l-2 border-amber-500/35 pl-3 [text-shadow:0_0_10px_rgba(251,191,36,0.12)]"
-                            >
-                              {a}
-                            </li>
-                          ))}
-                        </ul>
-                      </section>
+                      </div>
+                      <div className="py-1 pl-1">
+                        <p className={subHdr}>ETA</p>
+                        <p className="tabular-nums text-amber-200/95">
+                          {briefing.etaMin != null ? `${briefing.etaMin}m` : "—"}
+                        </p>
+                        {demoEtaHoursLabel(briefing.etaMin) ? (
+                          <p className="text-[6px] text-zinc-500">
+                            {demoEtaHoursLabel(briefing.etaMin)}
+                          </p>
+                        ) : null}
+                      </div>
                     </div>
-                  ) : aiLoading ? (
-                    <p className="py-8 text-center font-mono text-lg text-amber-200/60 [text-shadow:0_0_24px_rgba(251,191,36,0.25)]">
-                      UPLINK…
+                  ) : null}
+
+                  <section className="border-t border-[rgba(255,255,255,0.08)] pt-1">
+                    <h3 className={hdr}>Situation</h3>
+                    <p
+                      className="mt-0.5 line-clamp-[10] whitespace-pre-line text-[7px] leading-[1.2] text-amber-50/90"
+                      title={safetyBrief.situation}
+                    >
+                      {safetyBrief.situation}
                     </p>
-                  ) : (
-                    <p className="py-6 text-center font-mono text-sm text-zinc-500">
-                      {aiError ? (
-                        <span className="text-red-400">{aiError}</span>
-                      ) : (
-                        <>
-                          Enter an address under{" "}
-                          <span className="text-amber-400/80">FIRMS time</span> to
-                          populate surveillance.
-                        </>
-                      )}
+                  </section>
+                  <section className="border-t border-[rgba(255,255,255,0.08)] pt-1">
+                    <h3 className={hdr}>Why</h3>
+                    <p
+                      className="mt-0.5 line-clamp-5 text-[7px] leading-[1.25] text-amber-50/88"
+                      title={safetyBrief.reasoning}
+                    >
+                      {safetyBrief.reasoning}
                     </p>
-                  )}
+                  </section>
+                  <section className="border-t border-[rgba(255,255,255,0.08)] pt-1">
+                    <h3 className={hdr}>Meaning</h3>
+                    <p
+                      className="mt-0.5 line-clamp-5 text-[7px] leading-[1.2] text-amber-50/88"
+                      title={safetyBrief.whatThisMeans}
+                    >
+                      {safetyBrief.whatThisMeans}
+                    </p>
+                  </section>
+                  <section className="border-t border-[rgba(255,255,255,0.08)] pt-1">
+                    <h3 className={hdr}>Actions</h3>
+                    <ul className="mt-0.5 list-none space-y-0.5 text-[7px] leading-[1.25] text-amber-100/92">
+                      {topActions.map((a, i) => (
+                        <li key={i} className="flex gap-1">
+                          <ActionChevron />
+                          <span className="min-w-0 flex-1">{a}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
                 </div>
-                <p className="text-center font-mono text-[9px] text-zinc-600">
-                  Geocoding © OpenStreetMap · Not operational guidance
+              ) : aiLoading ? (
+                <p className="py-2 text-center font-mono text-[9px] text-amber-200/55">
+                  UPLINK…
                 </p>
-              </div>
-            )}
+              ) : (
+                <p className="py-2 text-center font-mono text-[8px] text-zinc-500">
+                  {aiError ? (
+                    <span className="text-red-400">{aiError}</span>
+                  ) : (
+                    <>
+                      Set location via{" "}
+                      <span className="text-amber-400/75">FIRMS time</span>.
+                    </>
+                  )}
+                </p>
+              )}
+            </div>
+            <p className="mt-1 border-t border-[rgba(255,255,255,0.06)] pt-1 text-center font-mono text-[6px] text-zinc-600">
+              © OpenStreetMap · Not guidance
+            </p>
+          </div>
+        </div>
+      ) : null}
 
-            {openPanel === "meteorology" && (
-              <div className="mx-auto flex max-w-4xl flex-col items-center">
-                <p className="font-mono text-[10px] font-bold uppercase tracking-[0.35em] text-amber-400/80">
-                  Meteorology
-                </p>
-                {!briefing ? (
-                  <p className="mt-8 text-center font-mono text-sm text-zinc-500">
-                    Enter an address under FIRMS time to activate gauges.
-                  </p>
-                ) : (
-                  <div className="mt-8 flex w-full flex-wrap items-start justify-center gap-10 md:gap-16">
-                    <RadialGauge
-                      gid="gg-temp"
-                      label="Temp °F"
-                      value={briefing.anchor.weather.tempF}
-                      max={120}
-                      sub="At pin"
-                    />
-                    <RadialGauge
-                      gid="gg-wind"
-                      label="Wind mph"
-                      value={briefing.anchor.weather.windMph}
-                      max={60}
-                      sub={briefing.anchor.weather.windFromTo}
-                    />
-                    <div className="flex flex-col items-center gap-1">
-                      <RadialGauge
-                        gid="gg-smoke"
-                        label="Smoke load"
-                        value={smokeLoad01(briefing.safety) * 100}
-                        max={100}
-                        sub={briefing.smoke.slice(0, 72) + (briefing.smoke.length > 72 ? "…" : "")}
-                      />
+      {!metOpen ? (
+        <button
+          type="button"
+          onClick={() => setMetOpen(true)}
+          className="pointer-events-auto absolute right-0 top-[42%] z-[56] flex h-16 w-7 -translate-y-1/2 flex-col items-center justify-center gap-0.5 rounded-l-sm border border-r-0 border-[rgba(255,255,255,0.1)] bg-black/30 px-0.5 font-tactical text-[9px] text-cyan-500/90 shadow-md backdrop-blur-[20px] hover:bg-black/40 hover:text-cyan-300"
+          style={{ WebkitBackdropFilter: "blur(20px)" }}
+          aria-label="Expand meteorology panel"
+        >
+          <span className="text-[10px] leading-none" aria-hidden>
+            ◀
+          </span>
+          <span className="max-w-[2.5rem] text-center text-[6px] font-bold uppercase tracking-[0.1em] text-zinc-500">
+            MET
+          </span>
+        </button>
+      ) : null}
+
+      {metOpen ? (
+        <div
+          className={`${hudShell} right-5 w-[min(300px,calc(100vw-2.5rem))] ${HUD_TOP}`}
+        >
+          <div className="flex shrink-0 items-center justify-between border-b border-[rgba(255,255,255,0.1)] px-2 py-1">
+            <p className="font-mono text-[7px] font-bold uppercase tracking-[0.1em] text-cyan-400/75">
+              Meteorology
+            </p>
+            <button
+              type="button"
+              onClick={() => setMetOpen(false)}
+              className="flex h-6 w-6 items-center justify-center rounded border border-[rgba(255,255,255,0.12)] bg-transparent text-sm leading-none text-zinc-400 hover:border-white/25 hover:text-zinc-100"
+              aria-label="Minimize meteorology panel"
+            >
+              −
+            </button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-hidden px-1.5 py-1">
+            {!briefing ? (
+              <p className="py-2 text-center font-mono text-[8px] text-zinc-500">
+                Set location in FIRMS time for gauges.
+              </p>
+            ) : (
+              <>
+                <div className="flex flex-nowrap items-start justify-between gap-0.5">
+                  <RadialGauge
+                    gid="gg-temp"
+                    label="Temp °F"
+                    value={briefing.anchor.weather.tempF}
+                    max={120}
+                    sub="Pin"
+                  />
+                  <RadialGauge
+                    gid="gg-wind"
+                    label="Wind"
+                    value={briefing.anchor.weather.windMph}
+                    max={60}
+                    sub={briefing.anchor.weather.windFromTo}
+                  />
+                  <RadialGauge
+                    gid="gg-smoke"
+                    label="Smoke"
+                    value={smokeLoad01(briefing.safety) * 100}
+                    max={100}
+                    sub={
+                      briefing.smoke.slice(0, 36) +
+                      (briefing.smoke.length > 36 ? "…" : "")
+                    }
+                  />
+                </div>
+                <div className="mt-1.5 border-t border-[rgba(255,255,255,0.08)] pt-1.5 font-mono text-[7px] text-zinc-400">
+                  <div className="grid grid-cols-2 text-center">
+                    <div className="border-b border-r border-[rgba(255,255,255,0.1)] px-1 py-0.5">
+                      <p className={subHdr}>Safety</p>
+                      <p className="text-amber-200/90">{briefing.safety}</p>
                     </div>
-                  </div>
-                )}
-                {briefing ? (
-                  <div className="mt-10 grid w-full max-w-xl grid-cols-2 gap-3 font-mono text-xs text-zinc-400 md:grid-cols-4">
-                    <div className="rounded border border-slate-800 bg-black/30 px-3 py-2 text-center">
-                      <p className="text-[9px] uppercase text-zinc-600">Safety</p>
-                      <p className="mt-1 text-amber-200/90">{briefing.safety}</p>
-                    </div>
-                    <div className="rounded border border-slate-800 bg-black/30 px-3 py-2 text-center">
-                      <p className="text-[9px] uppercase text-zinc-600">Nearest</p>
-                      <p className="mt-1 text-amber-200/90">
+                    <div className="border-b border-[rgba(255,255,255,0.1)] px-1 py-0.5">
+                      <p className={subHdr}>Nearest</p>
+                      <p className="text-amber-200/90">
                         {briefing.miles != null
                           ? `${briefing.miles.toFixed(1)} mi`
                           : "—"}
                       </p>
                     </div>
-                    <div className="rounded border border-slate-800 bg-black/30 px-3 py-2 text-center">
-                      <p className="text-[9px] uppercase text-zinc-600">Demo ETA</p>
-                      <p className="mt-1 text-amber-200/90">
-                        {briefing.etaMin != null ? `${briefing.etaMin} min` : "—"}
+                    <div className="border-r border-[rgba(255,255,255,0.1)] px-1 py-0.5">
+                      <p className={subHdr}>ETA</p>
+                      <p className="text-amber-200/90">
+                        {briefing.etaMin != null ? `${briefing.etaMin}m` : "—"}
                       </p>
                     </div>
-                    <div className="col-span-2 rounded border border-slate-800 bg-black/30 px-3 py-2 text-center md:col-span-1">
-                      <p className="text-[9px] uppercase text-zinc-600">Hotspot</p>
-                      <p className="mt-1 truncate text-amber-200/90">
-                        {briefing.nearest?.name ?? "None"}
+                    <div className="px-1 py-0.5">
+                      <p className={subHdr}>Hotspot</p>
+                      <p className="truncate text-amber-200/90">
+                        {briefing.nearest?.name ?? "—"}
                       </p>
                     </div>
                   </div>
-                ) : null}
-              </div>
+                </div>
+              </>
             )}
-
-            {openPanel === "operations" && (
-              <div className="mx-auto max-w-2xl space-y-6">
-                <p className="font-mono text-[10px] font-bold uppercase tracking-[0.35em] text-amber-400/80">
-                  Operations
-                </p>
-                {!briefing ? (
-                  <p className="text-center font-mono text-sm text-zinc-500">
-                    Enter an address under FIRMS time for checklist and route
-                    narrative.
-                  </p>
-                ) : (
-                  <>
-                    <section className="rounded-lg border border-slate-800 bg-black/35 p-4">
-                      <h3 className="font-mono text-xs font-bold uppercase tracking-[0.28em] text-amber-400/80">
-                        Evacuation checklist
-                      </h3>
-                      {briefing.advice ? (
-                        <p className="mt-3 font-mono text-sm leading-relaxed text-amber-50/90">
-                          {briefing.advice}
-                        </p>
-                      ) : (
-                        <ul className="mt-3 list-disc space-y-2 pl-5 font-mono text-sm text-zinc-400">
-                          <li>Monitor official alerts and local evacuation maps.</li>
-                          <li>Keep go-bag and vehicle fuel ready if in elevated band.</li>
-                          <li>Verify rally point labels against real orders.</li>
-                        </ul>
-                      )}
-                    </section>
-                    <section className="rounded-lg border border-slate-800 bg-black/35 p-4">
-                      <h3 className="font-mono text-xs font-bold uppercase tracking-[0.28em] text-amber-400/80">
-                        Route narrative (demo)
-                      </h3>
-                      <p className="mt-3 font-mono text-sm leading-relaxed text-cyan-100/90 [text-shadow:0_0_12px_rgba(34,211,238,0.15)]">
-                        {briefing.route.summary}
-                      </p>
-                      <ol className="mt-4 list-decimal space-y-2 pl-5 font-mono text-sm text-cyan-50/85">
-                        {briefing.route.turnText.map((t, i) => (
-                          <li key={i}>{t}</li>
-                        ))}
-                      </ol>
-                      <p className="mt-4 font-mono text-[10px] text-zinc-600">
-                        Cyan map polyline: demo geometry only — not OSRM/Google
-                        routing.
-                      </p>
-                    </section>
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div className="shrink-0 border-t border-slate-800 bg-black/50 py-3">
-            <button
-              type="button"
-              onClick={onClosePanel}
-              className="mx-auto flex h-10 w-10 items-center justify-center rounded-full border border-slate-700 font-mono text-sm text-amber-500/80 hover:border-amber-500/40 hover:bg-amber-950/30 hover:text-amber-200"
-              aria-label="Close panel"
-            >
-              ✕
-            </button>
           </div>
         </div>
-      </div>
-    </>
+      ) : null}
+    </div>
   );
 }

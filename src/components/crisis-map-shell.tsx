@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FiresOnlyMap } from "@/components/fires-only-map";
-import { LiveTimestamp } from "@/components/live-timestamp";
 import {
   buildDemoEvacuationRoute,
   estimateFireEtaMinutes,
@@ -35,7 +34,7 @@ import {
   ymdLocalToday,
 } from "@/lib/firms-timeline";
 import type { SafetyBriefResponse } from "@/lib/briefing-reasoning-types";
-import { TacticalHud, type HudPanel } from "@/components/tactical-hud";
+import { TacticalHud } from "@/components/tactical-hud";
 import { nearestFireMiles, type FirePoint } from "@/lib/geo";
 
 type GeoJsonInput = {
@@ -69,8 +68,6 @@ function formatIntelBriefTime(d: Date): string {
 }
 
 export function CrisisMapShell() {
-  const [firmsTimeOpen, setFirmsTimeOpen] = useState(true);
-  const [hudPanel, setHudPanel] = useState<HudPanel | null>(null);
   const [addressInput, setAddressInput] = useState(
     "24255 Pacific Coast Hwy, Malibu, CA",
   );
@@ -396,23 +393,17 @@ export function CrisisMapShell() {
     : null;
   const routeWaypoints = briefing ? briefing.route.waypoints : null;
 
-  const toggleHudPanel = useCallback((id: HudPanel) => {
-    setHudPanel((p) => (p === id ? null : id));
-  }, []);
-  const closeHudPanel = useCallback(() => setHudPanel(null), []);
-
   return (
-    <div className="relative h-dvh min-h-0 w-full bg-[var(--map-fallback)]">
-      <FiresOnlyMap
-        firesDataUrl={mapFiresDataUrl}
-        userLngLat={userLngLat}
-        routeWaypoints={routeWaypoints}
-      />
+    <div className="relative h-[100dvh] min-h-0 w-screen max-w-[100vw] overflow-hidden bg-[var(--map-fallback)]">
+      <div className="absolute inset-0 z-0 min-h-0">
+        <FiresOnlyMap
+          firesDataUrl={mapFiresDataUrl}
+          userLngLat={userLngLat}
+          routeWaypoints={routeWaypoints}
+        />
+      </div>
 
       <TacticalHud
-        openPanel={hudPanel}
-        onTogglePanel={toggleHudPanel}
-        onClosePanel={closeHudPanel}
         briefing={briefing}
         onRegenerateAi={() => void fetchAiBriefing()}
         onClearPin={() => {
@@ -428,180 +419,158 @@ export function CrisisMapShell() {
         aiError={aiError}
       />
 
-      <div className="pointer-events-none absolute left-3 top-[4.5rem] z-20 md:left-4 md:top-[5rem]">
-        <LiveTimestamp />
-      </div>
-
-      <div className="pointer-events-auto absolute bottom-4 left-1/2 z-30 w-[min(94vw,34rem)] -translate-x-1/2 rounded-lg border border-white/12 bg-black/80 shadow-lg backdrop-blur-md md:bottom-6 md:px-4 md:py-3">
-        {firmsTimeOpen ? (
-          <div className="px-3 py-2.5 md:px-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex flex-wrap items-center gap-2">
-                <p className="font-mono text-[9px] font-semibold uppercase tracking-widest text-zinc-500">
-                  FIRMS time
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setFirmsTimeOpen(false)}
-                  className="rounded border border-white/10 bg-white/5 px-2 py-1 font-mono text-[9px] font-semibold uppercase tracking-wider text-zinc-400 hover:border-white/20 hover:text-zinc-100"
-                  aria-label="Minimize FIRMS time"
-                >
-                  Minimize
-                </button>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-          <div className="flex rounded border border-white/15 bg-zinc-950/80 p-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider">
-            <button
-              type="button"
-              onClick={() => setTimelineMode("tactical")}
-              className={`rounded px-2 py-1 transition ${
-                timelineMode === "tactical"
-                  ? "bg-orange-600/90 text-white"
-                  : "text-zinc-500 hover:text-zinc-300"
-              }`}
-            >
-              Tactical
-            </button>
-            <button
-              type="button"
-              onClick={() => setTimelineMode("archive")}
-              className={`rounded px-2 py-1 transition ${
-                timelineMode === "archive"
-                  ? "bg-orange-600/90 text-white"
-                  : "text-zinc-500 hover:text-zinc-300"
-              }`}
-            >
-              Archive
-            </button>
-          </div>
-          {timelineScrubbing || firesLoading ? (
-            <span className="font-mono text-[9px] text-orange-300/90">
-              {timelineScrubbing ? "Selecting…" : "Loading…"}
-            </span>
-          ) : null}
-              </div>
-            </div>
-
-        {timelineMode === "tactical" ? (
-          <>
-            <p className="mt-2 font-mono text-[10px] leading-snug text-zinc-400">
-              Tactical (present / future): scrub{" "}
-              <span className="text-zinc-300">{TACTICAL_MIN_HOURS}h</span> to{" "}
-              <span className="text-zinc-300">+{TACTICAL_MAX_HOURS}h</span>{" "}
-              from now. NASA uses the <span className="text-zinc-300">calendar</span>{" "}
-              day of the instant you pick (single-day request when not “latest”).
-            </p>
-            <p className="mt-1.5 font-mono text-[11px] font-medium text-zinc-100">
-              {debouncedTacticalHours === 0
-                ? "As-of: latest NASA window (no fixed date)"
-                : `As-of: ${formatLocalDateTimeFromHoursOffset(debouncedTacticalHours)}`}
-            </p>
-            <p className="mt-0.5 font-mono text-[10px] text-zinc-500">
-              {debouncedTacticalHours === 0
-                ? ""
-                : `FIRMS date param: ${firmsDateFromTacticalHours(debouncedTacticalHours)}`}
-            </p>
-            <div className="mt-1 flex w-full flex-row-reverse justify-between font-mono text-[9px] text-zinc-500">
-              <span>+6h ahead · Present</span>
-              <span className="text-zinc-600">|</span>
-              <span>−72h past</span>
-            </div>
-            <input
-              type="range"
-              min={0}
-              max={78}
-              step={1}
-              value={78 - tacticalSliderPositionFromHours(tacticalHoursFromNow)}
-              onChange={(e) => {
-                const ui = Number.parseInt(e.target.value, 10) || 0;
-                setTacticalHoursFromNow(hoursFromTacticalSliderPosition(78 - ui));
-              }}
-              className="mt-1 h-2 w-full cursor-pointer accent-orange-500 [direction:rtl]"
-              aria-label="Tactical time: present and up to +6h on the right, up to −72h past on the left"
-              aria-valuemin={TACTICAL_MIN_HOURS}
-              aria-valuemax={TACTICAL_MAX_HOURS}
-              aria-valuenow={tacticalHoursFromNow}
-            />
-          </>
-        ) : (
-          <>
-            <p className="mt-2 font-mono text-[10px] leading-snug text-zinc-400">
-              Archive (historic): pick any calendar day from{" "}
-              <span className="text-zinc-300">{ARCHIVE_YMD_MIN}</span> through today.
-              Uses NASA VIIRS standard product (not NRT).
-            </p>
-            <label className="mt-2 block font-mono text-[9px] font-semibold uppercase tracking-widest text-zinc-500">
-              Jump to date
-              <input
-                type="date"
-                min={ARCHIVE_YMD_MIN}
-                max={ymdLocalToday()}
-                value={archiveJumpDate}
-                onChange={(e) => setArchiveJumpDate(e.target.value)}
-                className="mt-1 w-full rounded border border-white/15 bg-zinc-950/90 px-2 py-1.5 font-mono text-[12px] text-zinc-100 outline-none focus:border-orange-500/50"
-              />
-            </label>
-            <p className="mt-1.5 font-mono text-[11px] font-medium text-zinc-100">
-              Loading FIRMS for{" "}
-              <span className="text-orange-200/95">
-                {normalizeArchiveYmd(archiveJumpDate)}
-              </span>
-              {timelineScrubbing || archiveJumpDate !== debouncedArchiveDate
-                ? " (pending…)"
-                : ` (${debouncedArchiveDate})`}
-            </p>
-          </>
-        )}
-
-        <div className="mt-4 border-t border-white/10 pt-3">
-          <label className="block font-mono text-[9px] font-semibold uppercase tracking-widest text-zinc-500">
-            Location (auto-updates)
-            <textarea
-              value={addressInput}
-              onChange={(e) => setAddressInput(e.target.value)}
-              rows={2}
-              placeholder="Street, city, state or coordinates…"
-              className="mt-1.5 w-full resize-none rounded border border-white/15 bg-zinc-950/90 px-2.5 py-2 font-mono text-[12px] leading-snug text-zinc-100 outline-none focus:border-orange-500/50"
-              aria-label="Address or location for briefing and map"
-            />
-          </label>
-          <p className="mt-1.5 font-mono text-[9px] leading-snug text-zinc-500">
-            After a short pause, we geocode this address, refresh meteorology /
-            surveillance / operations, and fly the map to the pin. Panels stay
-            closed unless you open them from the dock.
+      <div
+        className="group/timeline hud-panel pointer-events-auto absolute bottom-0 left-1/2 z-30 flex max-h-[40px] w-[min(96vw,34rem)] -translate-x-1/2 flex-col overflow-hidden rounded-t-md shadow-[0_-4px_32px_rgba(0,0,0,0.25)] transition-[max-height] duration-300 ease-out hover:max-h-[min(90vh,80vh)] focus-within:max-h-[min(90vh,80vh)]"
+      >
+        <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-[rgba(255,255,255,0.08)] px-2 font-tactical">
+          <p className="text-[6px] font-semibold uppercase tracking-[0.1em] text-zinc-400/45">
+            FIRMS time
           </p>
-          {geocoding ? (
-            <p className="mt-2 font-mono text-[10px] text-orange-300/90">
-              Resolving address…
-            </p>
-          ) : null}
-          {geocodeError ? (
-            <p className="mt-2 font-mono text-[10px] text-red-400">
-              {geocodeError}
-            </p>
-          ) : null}
-          {loadError ? (
-            <p className="mt-2 font-mono text-[10px] text-red-400">
-              {loadError}
-            </p>
-          ) : null}
+          <div className="flex items-center gap-1.5">
+            <div className="flex rounded border border-white/12 bg-zinc-950/70 p-0.5 text-[7px] font-semibold uppercase tracking-wider">
+              <button
+                type="button"
+                onClick={() => setTimelineMode("tactical")}
+                className={`rounded px-1.5 py-0.5 transition ${
+                  timelineMode === "tactical"
+                    ? "bg-orange-600/90 text-white"
+                    : "text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                Tactical
+              </button>
+              <button
+                type="button"
+                onClick={() => setTimelineMode("archive")}
+                className={`rounded px-1.5 py-0.5 transition ${
+                  timelineMode === "archive"
+                    ? "bg-orange-600/90 text-white"
+                    : "text-zinc-500 hover:text-zinc-300"
+                }`}
+              >
+                Archive
+              </button>
+            </div>
+            {timelineScrubbing || firesLoading ? (
+              <span className="font-mono text-[7px] text-orange-300/90">
+                {timelineScrubbing ? "…" : "Load…"}
+              </span>
+            ) : (
+              <span className="text-[7px] text-zinc-600 opacity-0 transition-opacity group-hover/timeline:opacity-100">
+                Hover expand
+              </span>
+            )}
+          </div>
         </div>
 
-        <p className="mt-2 font-mono text-[9px] leading-snug text-zinc-600">
-          NASA Area API: max 5 days per request; tactical non-zero &amp; archive
-          use 1-day slices. Empty layers on unavailable dates are normal.
-        </p>
+        <div className="min-h-0 flex-1 hud-scroll-hidden overflow-y-auto px-2.5 pb-2.5 pt-1.5 font-tactical">
+          {timelineMode === "tactical" ? (
+            <>
+              <p className="font-mono text-[8px] leading-snug text-zinc-400">
+                Scrub {TACTICAL_MIN_HOURS}h → +{TACTICAL_MAX_HOURS}h. NASA uses
+                the calendar day of the instant you pick (single-day when not
+                latest).
+              </p>
+              <p className="mt-1 font-mono text-[9px] font-medium text-zinc-100">
+                {debouncedTacticalHours === 0
+                  ? "As-of: latest NASA window"
+                  : `As-of: ${formatLocalDateTimeFromHoursOffset(debouncedTacticalHours)}`}
+              </p>
+              <p className="mt-0.5 font-mono text-[7px] text-zinc-500">
+                {debouncedTacticalHours === 0
+                  ? ""
+                  : `FIRMS date: ${firmsDateFromTacticalHours(debouncedTacticalHours)}`}
+              </p>
+              <div className="mt-1 flex w-full flex-row-reverse justify-between font-mono text-[7px] text-zinc-500">
+                <span>+6h · now</span>
+                <span className="text-zinc-600">|</span>
+                <span>−72h</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={78}
+                step={1}
+                value={78 - tacticalSliderPositionFromHours(tacticalHoursFromNow)}
+                onChange={(e) => {
+                  const ui = Number.parseInt(e.target.value, 10) || 0;
+                  setTacticalHoursFromNow(
+                    hoursFromTacticalSliderPosition(78 - ui),
+                  );
+                }}
+                className="mt-1 h-1.5 w-full cursor-pointer accent-orange-500 [direction:rtl]"
+                aria-label="Tactical time: present and up to +6h on the right, up to −72h past on the left"
+                aria-valuemin={TACTICAL_MIN_HOURS}
+                aria-valuemax={TACTICAL_MAX_HOURS}
+                aria-valuenow={tacticalHoursFromNow}
+              />
+            </>
+          ) : (
+            <>
+              <p className="font-mono text-[8px] leading-snug text-zinc-400">
+                Archive: {ARCHIVE_YMD_MIN} → today. VIIRS standard (not NRT).
+              </p>
+              <label className="mt-1.5 block font-mono text-[7px] font-semibold uppercase tracking-widest text-zinc-500">
+                Jump to date
+                <input
+                  type="date"
+                  min={ARCHIVE_YMD_MIN}
+                  max={ymdLocalToday()}
+                  value={archiveJumpDate}
+                  onChange={(e) => setArchiveJumpDate(e.target.value)}
+                  className="mt-1 w-full rounded border border-white/12 bg-zinc-950/90 px-1.5 py-1 font-mono text-[10px] text-zinc-100 outline-none focus:border-orange-500/50"
+                />
+              </label>
+              <p className="mt-1 font-mono text-[9px] font-medium text-zinc-100">
+                FIRMS{" "}
+                <span className="text-orange-200/95">
+                  {normalizeArchiveYmd(archiveJumpDate)}
+                </span>
+                {timelineScrubbing || archiveJumpDate !== debouncedArchiveDate
+                  ? " (pending…)"
+                  : ` (${debouncedArchiveDate})`}
+              </p>
+            </>
+          )}
+
+          <div className="mt-2 border-t border-white/10 pt-2">
+            <label className="block font-mono text-[7px] font-semibold uppercase tracking-widest text-zinc-500">
+              Location
+              <textarea
+                value={addressInput}
+                onChange={(e) => setAddressInput(e.target.value)}
+                rows={2}
+                placeholder="Address or coordinates…"
+                className="mt-1 w-full resize-none rounded border border-white/12 bg-zinc-950/90 px-1.5 py-1 font-mono text-[10px] leading-snug text-zinc-100 outline-none focus:border-orange-500/50"
+                aria-label="Address or location for briefing and map"
+              />
+            </label>
+            <p className="mt-1 font-mono text-[7px] leading-snug text-zinc-500">
+              Geocode pauses, then MET / INTEL refresh and the map flies to the
+              pin.
+            </p>
+            {geocoding ? (
+              <p className="mt-1 font-mono text-[8px] text-orange-300/90">
+                Resolving…
+              </p>
+            ) : null}
+            {geocodeError ? (
+              <p className="mt-1 font-mono text-[8px] text-red-400">
+                {geocodeError}
+              </p>
+            ) : null}
+            {loadError ? (
+              <p className="mt-1 font-mono text-[8px] text-red-400">
+                {loadError}
+              </p>
+            ) : null}
           </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setFirmsTimeOpen(true)}
-            className="w-full px-3 py-2 font-mono text-[9px] font-semibold uppercase tracking-widest text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
-            aria-label="Expand FIRMS time"
-          >
-            FIRMS time — tap to expand
-          </button>
-        )}
+
+          <p className="mt-1.5 font-mono text-[7px] leading-snug text-zinc-600">
+            NASA Area API: max 5 days/request; non-zero tactical &amp; archive use
+            1-day slices.
+          </p>
+        </div>
       </div>
 
     </div>
