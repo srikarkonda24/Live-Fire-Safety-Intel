@@ -1,26 +1,89 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #06090c;
+  --header: #0a1016;
+  --panel: #0c1218;
+  --border: rgba(255, 107, 107, 0.16);
+  --text: #e8f0f4;
+  --muted: #7b8f9a;
+  --accent: #ff6b6b;
+  --accent-dim: #ff8f5a;
+  --rail: #0f1720;
+  --map-fallback: #05080a;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  height: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+.panel-border {
+  border: 1px solid var(--border);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 12px 40px rgba(0, 0, 0, 0.45);
+}
+
+.maplibregl-ctrl-bottom-right .maplibregl-ctrl {
+  margin: 12px 12px 12px 0;
+}
+
+.maplibregl-ctrl-group {
+  background: rgba(12, 18, 24, 0.92) !important;
+  border: 1px solid var(--border) !important;
+}
+
+.maplibregl-ctrl button {
+  filter: invert(1) brightness(0.85);
+}
+
+.maplibregl-ctrl button + button {
+  border-top: 1px solid var(--border) !important;
+}
+
+.maplibregl-map {
+  width: 100%;
+  height: 100%;
+}
+
+/* Apple-like overlay scrollbar for briefing panel (WebKit + Firefox) */
+.briefing-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.briefing-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.briefing-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.briefing-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.35);
+}
+
+.briefing-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.26);
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }

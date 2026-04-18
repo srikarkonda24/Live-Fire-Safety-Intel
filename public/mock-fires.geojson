@@ -1,0 +1,30 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {"type":"Feature","geometry":{"type":"Point","coordinates":[-119.52,36.78]},"properties":{"name":"Kings River complex (DEMO)","frp":1240,"confidence":"high","focus":true}},
+    {"type":"Feature","geometry":{"type":"Point","coordinates":[-119.38,36.62]},"properties":{"name":"Thermal shoulder A","frp":420,"confidence":"high","focus":false}},
+    {"type":"Feature","geometry":{"type":"Point","coordinates":[-119.68,36.91]},"properties":{"name":"Thermal shoulder B","frp":380,"confidence":"high","focus":false}},
+    {"type":"Feature","geometry":{"type":"Point","coordinates":[-119.12,36.55]},"properties":{"name":"Spot fire line","frp":210,"confidence":"med","focus":false}},
+    {"type":"Feature","geometry":{"type":"Point","coordinates":[-119.85,37.02]},"properties":{"name":"Ridge run","frp":290,"confidence":"med","focus":false}},
+    {"type":"Feature","geometry":{"type":"Point","coordinates":[-119.28,37.15]},"properties":{"name":"Canyon vent","frp":160,"confidence":"low","focus":false}},
+    {"type":"Feature","geometry":{"type":"Point","coordinates":[-120.05,36.95]},"properties":{"name":"Western flank","frp":340,"confidence":"high","focus":false}},
+    {"type":"Feature","geometry":{"type":"Point","coordinates":[-121.2,44.1]},"properties":{"name":"Cascades","frp":96,"confidence":"med","focus":false}},
+    {"type":"Feature","geometry":{"type":"Point","coordinates":[-110.4,34.9]},"properties":{"name":"Southwest","frp":52,"confidence":"low","focus":false}},
+    {"type":"Feature","geometry":{"type":"Point","coordinates":[-86.1,61.2]},"properties":{"name":"Boreal sweep","frp":312,"confidence":"high","focus":false}},
+    {"type":"Feature","geometry":{"type":"Point","coordinates":[-63.5,-17.8]},"properties":{"name":"Amazon edge","frp":420,"confidence":"high","focus":false}},
+    {"type":"Feature","geometry":{"type":"Point","coordinates":[-51.2,-12.4]},"properties":{"name":"Cerrado","frp":210,"confidence":"med","focus":false}},
+    {"type":"Feature","geometry":{"type":"Point","coordinates":[18.4,8.1]},"properties":{"name":"Sahel corridor","frp":88,"confidence":"med","focus":false}},
+    {"type":"Feature","geometry":{"type":"Point","coordinates":[31.6,-25.9]},"properties":{"name":"Southern Africa","frp":140,"confidence":"high","focus":false}},
+    {"type":"Feature","geometry":{"type":"Point","coordinates":[125.4,-8.6]},"properties":{"name":"Indonesia","frp":360,"confidence":"high","focus":false}},
+    {"type":"Feature","geometry":{"type":"Point","coordinates":[102.1,14.2]},"properties":{"name":"Mainland SEA","frp":74,"confidence":"low","focus":false}},
+    {"type":"Feature","geometry":{"type":"Point","coordinates":[135.5,34.8]},"properties":{"name":"Honshu","frp":41,"confidence":"low","focus":false}},
+    {"type":"Feature","geometry":{"type":"Point","coordinates":[150.2,-33.9]},"properties":{"name":"Eastern AU","frp":268,"confidence":"high","focus":false}},
+    {"type":"Feature","geometry":{"type":"Point","coordinates":[116.2,-31.8]},"properties":{"name":"Western AU","frp":112,"confidence":"med","focus":false}},
+    {"type":"Feature","geometry":{"type":"Point","coordinates":[37.6,55.8]},"properties":{"name":"Moscow periphery","frp":33,"confidence":"low","focus":false}},
+    {"type":"Feature","geometry":{"type":"Point","coordinates":[92.3,56.0]},"properties":{"name":"Central Siberia","frp":502,"confidence":"high","focus":false}},
+    {"type":"Feature","geometry":{"type":"Point","coordinates":[107.8,51.7]},"properties":{"name":"Lake Baikal sector","frp":198,"confidence":"med","focus":false}},
+    {"type":"Feature","geometry":{"type":"Point","coordinates":[-2.4,54.0]},"properties":{"name":"UK moorland","frp":22,"confidence":"low","focus":false}},
+    {"type":"Feature","geometry":{"type":"Point","coordinates":[23.7,38.0]},"properties":{"name":"Eastern Med","frp":61,"confidence":"med","focus":false}},
+    {"type":"Feature","geometry":{"type":"Point","coordinates":[-4.2,39.6]},"properties":{"name":"Iberian interior","frp":94,"confidence":"med","focus":false}}
+  ]
+}
