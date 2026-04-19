@@ -91,3 +91,64 @@ export function buildFirmsApiUrl(opts: FirmsApiQuery): string {
   if (d && YMD_RE.test(d)) sp.set("date", d);
   return `/api/firms?${sp.toString()}`;
 }
+
+/** FIRMS query options shared by static URLs and viewport-driven map refreshes. */
+export type FirmsLayerTimeline = {
+  date: string | null;
+  source?: string;
+  days: number;
+  maxPoints: number;
+  /** When zoomed out, match the map shell preset (global vs CONUS). */
+  layerPreset: "global" | "conus";
+};
+
+/**
+ * Build `/api/firms` URL for the map’s current view. Uses CONUS/global presets when
+ * zoomed out so NASA area requests stay within API-friendly boxes.
+ */
+export function buildFirmsUrlForViewport(
+  bounds: { west: number; south: number; east: number; north: number },
+  zoom: number,
+  tl: FirmsLayerTimeline,
+): string {
+  let { west, south, east, north } = bounds;
+  if (west > east) [west, east] = [east, west];
+  if (south > north) [south, north] = [north, south];
+
+  const lonSpan = east - west;
+  const latSpan = north - south;
+
+  const wideView = zoom <= 2.35 || lonSpan > 95 || latSpan > 52;
+
+  if (wideView) {
+    if (tl.layerPreset === "global") {
+      return buildGlobalFirmsApiUrl({
+        days: tl.days,
+        maxPoints: tl.maxPoints,
+        date: tl.date,
+        source: tl.source,
+      });
+    }
+    return buildContinentalUsFirmsApiUrl({
+      days: tl.days,
+      maxPoints: tl.maxPoints,
+      date: tl.date,
+      source: tl.source,
+    });
+  }
+
+  /** Large pad so one response covers nearby pans; map clips client-side for instant motion. */
+  const padLon = Math.max(0.55, lonSpan * 0.42);
+  const padLat = Math.max(0.45, latSpan * 0.42);
+
+  return buildFirmsApiUrl({
+    west: clamp(west - padLon, -180, 180),
+    south: clamp(south - padLat, -90, 90),
+    east: clamp(east + padLon, -180, 180),
+    north: clamp(north + padLat, -90, 90),
+    days: tl.days,
+    maxPoints: tl.maxPoints,
+    date: tl.date,
+    source: tl.source,
+  });
+}

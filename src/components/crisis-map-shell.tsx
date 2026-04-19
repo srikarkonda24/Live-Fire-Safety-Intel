@@ -1,7 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FiresOnlyMap } from "@/components/fires-only-map";
+import {
+  FiresOnlyMap,
+  type FiresOnlyMapHandle,
+} from "@/components/fires-only-map";
 import {
   buildDemoEvacuationRoute,
   estimateFireEtaMinutes,
@@ -20,19 +23,8 @@ import {
   buildFirmsApiUrl,
   buildGlobalFirmsApiUrl,
   padBbox,
+  type FirmsLayerTimeline,
 } from "@/lib/firms-url";
-import {
-  ARCHIVE_YMD_MIN,
-  defaultArchiveJumpYmd,
-  firmsDateFromTacticalHours,
-  formatLocalDateTimeFromHoursOffset,
-  hoursFromTacticalSliderPosition,
-  normalizeArchiveYmd,
-  tacticalSliderPositionFromHours,
-  TACTICAL_MAX_HOURS,
-  TACTICAL_MIN_HOURS,
-  ymdLocalToday,
-} from "@/lib/firms-timeline";
 import type { SafetyBriefResponse } from "@/lib/briefing-reasoning-types";
 import { TacticalHud } from "@/components/tactical-hud";
 import { nearestFireMiles, type FirePoint } from "@/lib/geo";
@@ -68,9 +60,7 @@ function formatIntelBriefTime(d: Date): string {
 }
 
 export function CrisisMapShell() {
-  const [addressInput, setAddressInput] = useState(
-    "24255 Pacific Coast Hwy, Malibu, CA",
-  );
+  const [addressInput, setAddressInput] = useState("");
   const [activeAddress, setActiveAddress] = useState<string | null>(null);
   const [fires, setFires] = useState<FirePoint[]>([]);
   const [firesLoading, setFiresLoading] = useState(true);
@@ -85,30 +75,17 @@ export function CrisisMapShell() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [pendingAutoBrief, setPendingAutoBrief] = useState(false);
+  /** Increments on each successful geocode so the map can zoom once per selection. */
+  const [addressFocusVersion, setAddressFocusVersion] = useState(0);
 
-  const [debouncedAddressQuery, setDebouncedAddressQuery] = useState(() =>
-    addressInput.trim(),
-  );
+  const [debouncedAddressQuery, setDebouncedAddressQuery] = useState("");
   const geocodeSeqRef = useRef(0);
-
-  const [timelineMode, setTimelineMode] = useState<"tactical" | "archive">(
-    "tactical",
-  );
-  /** Hours from “now”: [-72, +6]. 0 = NASA latest (no `date`). */
-  const [tacticalHoursFromNow, setTacticalHoursFromNow] = useState(0);
-  const [debouncedTacticalHours, setDebouncedTacticalHours] = useState(0);
-  const [archiveJumpDate, setArchiveJumpDate] = useState(defaultArchiveJumpYmd);
-  const [debouncedArchiveDate, setDebouncedArchiveDate] = useState(() =>
-    normalizeArchiveYmd(defaultArchiveJumpYmd()),
-  );
-
-  useEffect(() => {
-    const t = window.setTimeout(() => {
-      setDebouncedTacticalHours(tacticalHoursFromNow);
-      setDebouncedArchiveDate(normalizeArchiveYmd(archiveJumpDate));
-    }, 320);
-    return () => window.clearTimeout(t);
-  }, [tacticalHoursFromNow, archiveJumpDate]);
+  const mapRef = useRef<FiresOnlyMapHandle | null>(null);
+  const mapFocusPayloadRef = useRef<{
+    version: number;
+    center: [number, number] | null;
+    waypoints: [number, number][] | null;
+  }>({ version: 0, center: null, waypoints: null });
 
   useEffect(() => {
     const t = window.setTimeout(() => {
@@ -117,23 +94,21 @@ export function CrisisMapShell() {
     return () => window.clearTimeout(t);
   }, [addressInput]);
 
-  const firmsDateParam = useMemo(() => {
-    if (timelineMode === "archive") return debouncedArchiveDate;
-    return firmsDateFromTacticalHours(debouncedTacticalHours);
-  }, [timelineMode, debouncedArchiveDate, debouncedTacticalHours]);
+  const submitAddressLookup = useCallback(() => {
+    const q = addressInput.trim();
+    if (!q) return;
+    setAddressInput(q);
+    setDebouncedAddressQuery(q);
+    // Allow Enter to re-center even when the same resolved address is already active.
+    if (pinnedAnchor || activeAddress === q) {
+      setAddressFocusVersion((v) => v + 1);
+    }
+  }, [addressInput, activeAddress, pinnedAnchor]);
 
-  const historySingleDay = firmsDateParam != null;
+  /** NASA “most recent” window (no `date` segment on FIRMS URLs). */
+  const firmsDateParam = null as string | null;
 
-  /** NASA NRT is only recent; historic calendar days need standard product. */
-  const firmsQueryOpts = useMemo(
-    () =>
-      timelineMode === "archive"
-        ? ({ source: "VIIRS_SNPP_SP" as const } satisfies {
-            source?: string;
-          })
-        : {},
-    [timelineMode],
-  );
+  const historySingleDay = false;
 
   /** FIRMS bbox center: live geocode pin when set, else keyword demo presets from typed text. */
   const firmsAnchor = useMemo((): AddressBriefingAnchor => {
@@ -148,9 +123,8 @@ export function CrisisMapShell() {
         days: 1,
         maxPoints: 15_000,
         date: firmsDateParam,
-        ...firmsQueryOpts,
       }),
-    [firmsDateParam, firmsQueryOpts],
+    [firmsDateParam],
   );
 
   /** Map layer: contiguous US so coast-to-coast hotspots show regardless of searched address. */
@@ -160,9 +134,8 @@ export function CrisisMapShell() {
         days: historySingleDay ? 1 : 2,
         maxPoints: 22_000,
         date: firmsDateParam,
-        ...firmsQueryOpts,
       }),
-    [firmsDateParam, historySingleDay, firmsQueryOpts],
+    [firmsDateParam, historySingleDay],
   );
 
   /** Briefing / nearest fire: tighter window around the pin (not used for map dots). */
@@ -173,9 +146,8 @@ export function CrisisMapShell() {
       days: historySingleDay ? 1 : 2,
       maxPoints: 15_000,
       date: firmsDateParam,
-      ...firmsQueryOpts,
     });
-  }, [firmsAnchor, firmsDateParam, historySingleDay, firmsQueryOpts]);
+  }, [firmsAnchor, firmsDateParam, historySingleDay]);
 
   /** Prefer global map; else always CONUS (not regional) so the whole US stays visible. */
   const [mapUseGlobalLayer, setMapUseGlobalLayer] = useState(false);
@@ -200,13 +172,14 @@ export function CrisisMapShell() {
     };
   }, [mapGlobalFirmsUrl, mapConusFirmsUrl]);
 
-  const timelineScrubbing =
-    tacticalHoursFromNow !== debouncedTacticalHours ||
-    normalizeArchiveYmd(archiveJumpDate) !== debouncedArchiveDate;
-
-  const mapFiresDataUrl = mapUseGlobalLayer
-    ? mapGlobalFirmsUrl
-    : mapConusFirmsUrl;
+  const firesMapTimeline = useMemo((): FirmsLayerTimeline => {
+    return {
+      date: firmsDateParam,
+      days: historySingleDay ? 1 : 2,
+      maxPoints: mapUseGlobalLayer ? 15_000 : 22_000,
+      layerPreset: mapUseGlobalLayer ? "global" : "conus",
+    };
+  }, [firmsDateParam, historySingleDay, mapUseGlobalLayer]);
 
   useEffect(() => {
     let cancelled = false;
@@ -269,6 +242,7 @@ export function CrisisMapShell() {
         }
         setPinnedAnchor(locationContextToAnchor(data));
         setActiveAddress(q);
+        setAddressFocusVersion((v) => v + 1);
         setPendingAutoBrief(true);
         setGeocodeError(null);
       } catch (e) {
@@ -388,18 +362,51 @@ export function CrisisMapShell() {
     fetchAiBriefing,
   ]);
 
-  const userLngLat = briefing
-    ? ([briefing.anchor.lon, briefing.anchor.lat] as [number, number])
-    : null;
-  const routeWaypoints = briefing ? briefing.route.waypoints : null;
+  /** Stable tuple/refs so the map does not treat every parent render as a camera change. */
+  const userLngLat = useMemo((): [number, number] | null => {
+    if (!briefing) return null;
+    return [briefing.anchor.lon, briefing.anchor.lat];
+  }, [briefing?.anchor.lon, briefing?.anchor.lat]);
+
+  const routeWaypoints = useMemo((): [number, number][] | null => {
+    if (!briefing) return null;
+    return briefing.route.waypoints;
+  }, [
+    briefing?.anchor.lat,
+    briefing?.anchor.lon,
+    briefing?.anchor.safeLat,
+    briefing?.anchor.safeLon,
+  ]);
+
+  mapFocusPayloadRef.current = {
+    version: addressFocusVersion,
+    center: userLngLat,
+    waypoints: routeWaypoints,
+  };
+
+  const runMapFocusFromRef = useCallback(() => {
+    const { version, center, waypoints } = mapFocusPayloadRef.current;
+    if (version < 1 || !center) return;
+    mapRef.current?.focusOnResolvedPin({
+      center,
+      waypoints,
+    });
+  }, []);
+
+  /** After paint: child map `useEffect` has run, so `mapRef` is valid before this runs. */
+  useEffect(() => {
+    runMapFocusFromRef();
+  }, [addressFocusVersion, userLngLat, routeWaypoints, runMapFocusFromRef]);
 
   return (
     <div className="relative h-[100dvh] min-h-0 w-screen max-w-[100vw] overflow-hidden bg-[var(--map-fallback)]">
       <div className="absolute inset-0 z-0 min-h-0">
         <FiresOnlyMap
-          firesDataUrl={mapFiresDataUrl}
+          ref={mapRef}
+          firesTimeline={firesMapTimeline}
           userLngLat={userLngLat}
           routeWaypoints={routeWaypoints}
+          onMapReady={runMapFocusFromRef}
         />
       </div>
 
@@ -411,6 +418,7 @@ export function CrisisMapShell() {
           setGeocodeError(null);
         }}
         geocoding={geocoding}
+        geocodeError={geocodeError}
         firesLoading={firesLoading}
         pinnedAnchor={pinnedAnchor}
         safetyBrief={safetyBrief}
@@ -419,126 +427,19 @@ export function CrisisMapShell() {
         aiError={aiError}
       />
 
-      <div
-        className="group/timeline hud-panel pointer-events-auto absolute bottom-0 left-1/2 z-30 flex max-h-[40px] w-[min(96vw,34rem)] -translate-x-1/2 flex-col overflow-hidden rounded-t-md shadow-[0_-4px_32px_rgba(0,0,0,0.25)] transition-[max-height] duration-300 ease-out hover:max-h-[min(90vh,80vh)] focus-within:max-h-[min(90vh,80vh)]"
-      >
-        <div className="flex h-10 shrink-0 items-center justify-between gap-2 border-b border-[rgba(255,255,255,0.08)] px-2 font-tactical">
-          <p className="text-[6px] font-semibold uppercase tracking-[0.1em] text-zinc-400/45">
-            FIRMS time
-          </p>
-          <div className="flex items-center gap-1.5">
-            <div className="flex rounded border border-white/12 bg-zinc-950/70 p-0.5 text-[7px] font-semibold uppercase tracking-wider">
-              <button
-                type="button"
-                onClick={() => setTimelineMode("tactical")}
-                className={`rounded px-1.5 py-0.5 transition ${
-                  timelineMode === "tactical"
-                    ? "bg-orange-600/90 text-white"
-                    : "text-zinc-500 hover:text-zinc-300"
-                }`}
-              >
-                Tactical
-              </button>
-              <button
-                type="button"
-                onClick={() => setTimelineMode("archive")}
-                className={`rounded px-1.5 py-0.5 transition ${
-                  timelineMode === "archive"
-                    ? "bg-orange-600/90 text-white"
-                    : "text-zinc-500 hover:text-zinc-300"
-                }`}
-              >
-                Archive
-              </button>
-            </div>
-            {timelineScrubbing || firesLoading ? (
-              <span className="font-mono text-[7px] text-orange-300/90">
-                {timelineScrubbing ? "…" : "Load…"}
-              </span>
-            ) : (
-              <span className="text-[7px] text-zinc-600 opacity-0 transition-opacity group-hover/timeline:opacity-100">
-                Hover expand
-              </span>
-            )}
-          </div>
-        </div>
-
-        <div className="min-h-0 flex-1 hud-scroll-hidden overflow-y-auto px-2.5 pb-2.5 pt-1.5 font-tactical">
-          {timelineMode === "tactical" ? (
-            <>
-              <p className="font-mono text-[8px] leading-snug text-zinc-400">
-                Scrub {TACTICAL_MIN_HOURS}h → +{TACTICAL_MAX_HOURS}h. NASA uses
-                the calendar day of the instant you pick (single-day when not
-                latest).
-              </p>
-              <p className="mt-1 font-mono text-[9px] font-medium text-zinc-100">
-                {debouncedTacticalHours === 0
-                  ? "As-of: latest NASA window"
-                  : `As-of: ${formatLocalDateTimeFromHoursOffset(debouncedTacticalHours)}`}
-              </p>
-              <p className="mt-0.5 font-mono text-[7px] text-zinc-500">
-                {debouncedTacticalHours === 0
-                  ? ""
-                  : `FIRMS date: ${firmsDateFromTacticalHours(debouncedTacticalHours)}`}
-              </p>
-              <div className="mt-1 flex w-full flex-row-reverse justify-between font-mono text-[7px] text-zinc-500">
-                <span>+6h · now</span>
-                <span className="text-zinc-600">|</span>
-                <span>−72h</span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={78}
-                step={1}
-                value={78 - tacticalSliderPositionFromHours(tacticalHoursFromNow)}
-                onChange={(e) => {
-                  const ui = Number.parseInt(e.target.value, 10) || 0;
-                  setTacticalHoursFromNow(
-                    hoursFromTacticalSliderPosition(78 - ui),
-                  );
-                }}
-                className="mt-1 h-1.5 w-full cursor-pointer accent-orange-500 [direction:rtl]"
-                aria-label="Tactical time: present and up to +6h on the right, up to −72h past on the left"
-                aria-valuemin={TACTICAL_MIN_HOURS}
-                aria-valuemax={TACTICAL_MAX_HOURS}
-                aria-valuenow={tacticalHoursFromNow}
-              />
-            </>
-          ) : (
-            <>
-              <p className="font-mono text-[8px] leading-snug text-zinc-400">
-                Archive: {ARCHIVE_YMD_MIN} → today. VIIRS standard (not NRT).
-              </p>
-              <label className="mt-1.5 block font-mono text-[7px] font-semibold uppercase tracking-widest text-zinc-500">
-                Jump to date
-                <input
-                  type="date"
-                  min={ARCHIVE_YMD_MIN}
-                  max={ymdLocalToday()}
-                  value={archiveJumpDate}
-                  onChange={(e) => setArchiveJumpDate(e.target.value)}
-                  className="mt-1 w-full rounded border border-white/12 bg-zinc-950/90 px-1.5 py-1 font-mono text-[10px] text-zinc-100 outline-none focus:border-orange-500/50"
-                />
-              </label>
-              <p className="mt-1 font-mono text-[9px] font-medium text-zinc-100">
-                FIRMS{" "}
-                <span className="text-orange-200/95">
-                  {normalizeArchiveYmd(archiveJumpDate)}
-                </span>
-                {timelineScrubbing || archiveJumpDate !== debouncedArchiveDate
-                  ? " (pending…)"
-                  : ` (${debouncedArchiveDate})`}
-              </p>
-            </>
-          )}
-
-          <div className="mt-2 border-t border-white/10 pt-2">
+      <div className="hud-panel pointer-events-auto absolute bottom-0 left-1/2 z-30 w-[min(96vw,34rem)] -translate-x-1/2 rounded-t-md shadow-[0_-4px_32px_rgba(0,0,0,0.25)]">
+        <div className="hud-scroll-hidden max-h-[min(40vh,22rem)] overflow-y-auto px-2.5 pb-2.5 pt-2 font-tactical">
+          <div>
             <label className="block font-mono text-[7px] font-semibold uppercase tracking-widest text-zinc-500">
               Location
               <textarea
                 value={addressInput}
                 onChange={(e) => setAddressInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter" || e.shiftKey) return;
+                  e.preventDefault();
+                  submitAddressLookup();
+                }}
                 rows={2}
                 placeholder="Address or coordinates…"
                 className="mt-1 w-full resize-none rounded border border-white/12 bg-zinc-950/90 px-1.5 py-1 font-mono text-[10px] leading-snug text-zinc-100 outline-none focus:border-orange-500/50"
@@ -549,6 +450,13 @@ export function CrisisMapShell() {
               Geocode pauses, then MET / INTEL refresh and the map flies to the
               pin.
             </p>
+            <button
+              type="button"
+              onClick={() => mapRef.current?.resetWorldView()}
+              className="mt-1.5 w-full rounded border border-white/15 bg-zinc-950/85 px-2 py-1 font-mono text-[8px] font-semibold uppercase tracking-widest text-zinc-300 transition hover:border-orange-500/40 hover:text-orange-200/95"
+            >
+              World view
+            </button>
             {geocoding ? (
               <p className="mt-1 font-mono text-[8px] text-orange-300/90">
                 Resolving…
@@ -565,11 +473,6 @@ export function CrisisMapShell() {
               </p>
             ) : null}
           </div>
-
-          <p className="mt-1.5 font-mono text-[7px] leading-snug text-zinc-600">
-            NASA Area API: max 5 days/request; non-zero tactical &amp; archive use
-            1-day slices.
-          </p>
         </div>
       </div>
 

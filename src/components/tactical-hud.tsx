@@ -142,6 +142,7 @@ export type TacticalHudProps = {
   onRegenerateAi: () => void;
   onClearPin: () => void;
   geocoding: boolean;
+  geocodeError: string | null;
   firesLoading: boolean;
   pinnedAnchor: AddressBriefingAnchor | null;
   safetyBrief: SafetyBriefResponse | null;
@@ -155,6 +156,7 @@ export function TacticalHud({
   onRegenerateAi,
   onClearPin,
   geocoding,
+  geocodeError,
   firesLoading,
   pinnedAnchor,
   safetyBrief,
@@ -227,7 +229,7 @@ export function TacticalHud({
           <div className="min-h-0 flex-1 overflow-hidden px-2 py-1">
             <p className="text-[7px] leading-snug text-zinc-500">
               Pin from{" "}
-              <span className="text-amber-500/75">FIRMS time · location</span>.
+              <span className="text-amber-500/75">location</span> below.
             </p>
             <div className="mt-1 flex flex-wrap gap-1">
               {briefing ? (
@@ -255,119 +257,144 @@ export function TacticalHud({
                 Geocoding…
               </p>
             ) : null}
+            {geocodeError ? (
+              <p className="mt-1 rounded border border-red-500/35 bg-red-950/20 px-1.5 py-1 font-mono text-[7px] leading-snug text-red-300">
+                Location lookup failed: {geocodeError}
+              </p>
+            ) : null}
             {safetyBriefUpdated ? (
               <p className="mt-0.5 font-mono text-[6px] tabular-nums text-amber-600/90">
                 {safetyBriefUpdated}
               </p>
             ) : null}
 
-            {aiError && safetyBrief ? (
-              <p className="mt-1 border-l-2 border-red-500/45 pl-1.5 font-mono text-[7px] text-red-300">
-                {aiError}
-              </p>
-            ) : null}
-
             <div className="mt-1.5 border-t border-[rgba(255,255,255,0.08)] pt-1.5">
-              {safetyBrief ? (
-                <div className="space-y-1.5">
-                  {briefing ? (
-                    <div className="grid grid-cols-2 font-mono text-[7px] leading-tight text-amber-100/95">
-                      <div className="border-b border-r border-[rgba(255,255,255,0.1)] py-1 pr-1">
-                        <p className={subHdr}>Fire</p>
-                        <p className="tabular-nums text-amber-200/95">
-                          {briefing.miles != null
-                            ? `${briefing.miles.toFixed(1)} mi`
-                            : "—"}
-                        </p>
-                        {briefing.nearest ? (
-                          <p className="truncate text-[6px] text-zinc-500">
-                            {briefing.nearest.name}
-                          </p>
-                        ) : null}
-                      </div>
-                      <div className="border-b border-[rgba(255,255,255,0.1)] py-1 pl-1">
-                        <p className={subHdr}>Wind</p>
-                        <p className="tabular-nums text-amber-200/95">
-                          {briefing.anchor.weather.windMph} mph
-                        </p>
-                        <p className="text-[6px] text-zinc-500">
-                          {briefing.anchor.weather.windFromTo}
-                        </p>
-                      </div>
-                      <div className="border-r border-[rgba(255,255,255,0.1)] py-1 pr-1">
-                        <p className={subHdr}>Temp</p>
-                        <p className="tabular-nums text-amber-200/95">
-                          {briefing.anchor.weather.tempF}°F
-                        </p>
-                      </div>
-                      <div className="py-1 pl-1">
-                        <p className={subHdr}>ETA</p>
-                        <p className="tabular-nums text-amber-200/95">
-                          {briefing.etaMin != null ? `${briefing.etaMin}m` : "—"}
-                        </p>
-                        {demoEtaHoursLabel(briefing.etaMin) ? (
-                          <p className="text-[6px] text-zinc-500">
-                            {demoEtaHoursLabel(briefing.etaMin)}
-                          </p>
-                        ) : null}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  <section className="border-t border-[rgba(255,255,255,0.08)] pt-1">
-                    <h3 className={hdr}>Situation</h3>
-                    <p
-                      className="mt-0.5 line-clamp-[10] whitespace-pre-line text-[7px] leading-[1.2] text-amber-50/90"
-                      title={safetyBrief.situation}
-                    >
-                      {safetyBrief.situation}
-                    </p>
-                  </section>
-                  <section className="border-t border-[rgba(255,255,255,0.08)] pt-1">
-                    <h3 className={hdr}>Why</h3>
-                    <p
-                      className="mt-0.5 line-clamp-5 text-[7px] leading-[1.25] text-amber-50/88"
-                      title={safetyBrief.reasoning}
-                    >
-                      {safetyBrief.reasoning}
-                    </p>
-                  </section>
-                  <section className="border-t border-[rgba(255,255,255,0.08)] pt-1">
-                    <h3 className={hdr}>Meaning</h3>
-                    <p
-                      className="mt-0.5 line-clamp-5 text-[7px] leading-[1.2] text-amber-50/88"
-                      title={safetyBrief.whatThisMeans}
-                    >
-                      {safetyBrief.whatThisMeans}
-                    </p>
-                  </section>
-                  <section className="border-t border-[rgba(255,255,255,0.08)] pt-1">
-                    <h3 className={hdr}>Actions</h3>
-                    <ul className="mt-0.5 list-none space-y-0.5 text-[7px] leading-[1.25] text-amber-100/92">
-                      {topActions.map((a, i) => (
-                        <li key={i} className="flex gap-1">
-                          <ActionChevron />
-                          <span className="min-w-0 flex-1">{a}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
-                </div>
-              ) : aiLoading ? (
-                <p className="py-2 text-center font-mono text-[9px] text-amber-200/55">
-                  UPLINK…
-                </p>
+              {!briefing ? (
+                aiLoading ? (
+                  <p className="py-2 text-center font-mono text-[9px] text-amber-200/55">
+                    UPLINK…
+                  </p>
+                ) : (
+                  <p className="py-2 text-center font-mono text-[8px] text-zinc-500">
+                    {aiError ? (
+                      <span className="text-red-400">{aiError}</span>
+                    ) : (
+                      <>
+                        Set location via{" "}
+                        <span className="text-amber-400/75">FIRMS time</span>.
+                      </>
+                    )}
+                  </p>
+                )
               ) : (
-                <p className="py-2 text-center font-mono text-[8px] text-zinc-500">
-                  {aiError ? (
-                    <span className="text-red-400">{aiError}</span>
-                  ) : (
+                <div className="space-y-1.5">
+                  <div className="grid grid-cols-2 font-mono text-[7px] leading-tight text-amber-100/95">
+                    <div className="border-b border-r border-[rgba(255,255,255,0.1)] py-1 pr-1">
+                      <p className={subHdr}>Fire</p>
+                      <p className="tabular-nums text-amber-200/95">
+                        {briefing.miles != null
+                          ? `${briefing.miles.toFixed(1)} mi`
+                          : "—"}
+                      </p>
+                      {briefing.nearest ? (
+                        <p className="truncate text-[6px] text-zinc-500">
+                          {briefing.nearest.name}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="border-b border-[rgba(255,255,255,0.1)] py-1 pl-1">
+                      <p className={subHdr}>Wind</p>
+                      <p className="tabular-nums text-amber-200/95">
+                        {briefing.anchor.weather.windMph} mph
+                      </p>
+                      <p className="text-[6px] text-zinc-500">
+                        {briefing.anchor.weather.windFromTo}
+                      </p>
+                    </div>
+                    <div className="border-r border-[rgba(255,255,255,0.1)] py-1 pr-1">
+                      <p className={subHdr}>Temp</p>
+                      <p className="tabular-nums text-amber-200/95">
+                        {briefing.anchor.weather.tempF}°F
+                      </p>
+                    </div>
+                    <div className="py-1 pl-1">
+                      <p className={subHdr}>ETA</p>
+                      <p className="tabular-nums text-amber-200/95">
+                        {briefing.etaMin != null ? `${briefing.etaMin}m` : "—"}
+                      </p>
+                      {demoEtaHoursLabel(briefing.etaMin) ? (
+                        <p className="text-[6px] text-zinc-500">
+                          {demoEtaHoursLabel(briefing.etaMin)}
+                        </p>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {safetyBrief ? (
                     <>
-                      Set location via{" "}
-                      <span className="text-amber-400/75">FIRMS time</span>.
+                      {aiError ? (
+                        <p className="border-l-2 border-red-500/45 pl-1.5 font-mono text-[7px] text-red-300">
+                          {aiError}
+                        </p>
+                      ) : null}
+                      <section className="border-t border-[rgba(255,255,255,0.08)] pt-1">
+                        <h3 className={hdr}>Situation</h3>
+                        <p
+                          className="mt-0.5 line-clamp-[10] whitespace-pre-line text-[7px] leading-[1.2] text-amber-50/90"
+                          title={safetyBrief.situation}
+                        >
+                          {safetyBrief.situation}
+                        </p>
+                      </section>
+                      <section className="border-t border-[rgba(255,255,255,0.08)] pt-1">
+                        <h3 className={hdr}>Why</h3>
+                        <p
+                          className="mt-0.5 line-clamp-5 text-[7px] leading-[1.25] text-amber-50/88"
+                          title={safetyBrief.reasoning}
+                        >
+                          {safetyBrief.reasoning}
+                        </p>
+                      </section>
+                      <section className="border-t border-[rgba(255,255,255,0.08)] pt-1">
+                        <h3 className={hdr}>Meaning</h3>
+                        <p
+                          className="mt-0.5 line-clamp-5 text-[7px] leading-[1.2] text-amber-50/88"
+                          title={safetyBrief.whatThisMeans}
+                        >
+                          {safetyBrief.whatThisMeans}
+                        </p>
+                      </section>
+                      <section className="border-t border-[rgba(255,255,255,0.08)] pt-1">
+                        <h3 className={hdr}>Actions</h3>
+                        <ul className="mt-0.5 list-none space-y-0.5 text-[7px] leading-[1.25] text-amber-100/92">
+                          {topActions.map((a, i) => (
+                            <li key={i} className="flex gap-1">
+                              <ActionChevron />
+                              <span className="min-w-0 flex-1">{a}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </section>
                     </>
+                  ) : aiLoading ? (
+                    <p className="py-1.5 text-center font-mono text-[9px] text-amber-200/55">
+                      AI brief incoming…
+                    </p>
+                  ) : (
+                    <div className="border-t border-[rgba(255,255,255,0.08)] pt-1.5 text-center">
+                      {aiError ? (
+                        <p className="font-mono text-[7px] text-red-400">
+                          {aiError}
+                        </p>
+                      ) : (
+                        <p className="font-mono text-[7px] text-zinc-500">
+                          Use <span className="text-amber-500/80">Regen AI</span>{" "}
+                          for Situation / Why / Actions.
+                        </p>
+                      )}
+                    </div>
                   )}
-                </p>
+                </div>
               )}
             </div>
             <p className="mt-1 border-t border-[rgba(255,255,255,0.06)] pt-1 text-center font-mono text-[6px] text-zinc-600">

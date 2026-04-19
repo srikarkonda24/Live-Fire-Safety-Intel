@@ -11,6 +11,158 @@ export const runtime = "nodejs";
 const NOMINATIM_UA =
   "ForestFireIntel/1.0 (local crisis map demo; contact via project maintainer)";
 
+type GeocodeHit = { lat: number; lon: number; displayName: string };
+
+/** Accepts `34.05, -118.71` or `34.05 -118.71` so users can bypass geocoder outages. */
+function parseLatLonQuery(q: string): GeocodeHit | null {
+  const t = q.trim();
+  const m = t.match(
+    /^(-?\d+(?:\.\d+)?)\s*[,;\s]\s*(-?\d+(?:\.\d+)?)$/,
+  );
+  if (!m) return null;
+  const lat = Number(m[1]);
+  const lon = Number(m[2]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+  return {
+    lat,
+    lon,
+    displayName: `${lat.toFixed(5)}, ${lon.toFixed(5)}`,
+  };
+}
+
+/**
+ * Primary: OSM Nominatim (best addresses). Often rate-limited or 503 on the public instance.
+ * Optional `NOMINATIM_EMAIL` in `.env.local` (see `env.example`) for fair-use policy contact.
+ */
+async function geocodeNominatim(q: string): Promise<GeocodeHit | null> {
+  const nomUrl = new URL("https://nominatim.openstreetmap.org/search");
+  nomUrl.searchParams.set("q", q);
+  nomUrl.searchParams.set("format", "json");
+  nomUrl.searchParams.set("limit", "1");
+  const email = process.env.NOMINATIM_EMAIL?.trim();
+  if (email) nomUrl.searchParams.set("email", email);
+
+  let nomRes: Response;
+  try {
+    nomRes = await fetch(nomUrl.toString(), {
+      headers: {
+        "User-Agent": NOMINATIM_UA,
+        "Accept-Language": "en",
+        Accept: "application/json",
+      },
+      cache: "no-store",
+    });
+  } catch {
+    return null;
+  }
+  if (!nomRes.ok) return null;
+
+  const results: unknown = await nomRes.json();
+  if (!Array.isArray(results) || results.length === 0) return null;
+
+  const r0 = results[0] as Record<string, unknown>;
+  const lat = Number(r0.lat);
+  const lon = Number(r0.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+
+  return {
+    lat,
+    lon,
+    displayName: String(r0.display_name ?? q),
+  };
+}
+
+/** Open-Meteo returns no `results` for comma-heavy strings like "Cincinnati, OH" — needs city + countryCode. */
+async function searchOpenMeteoOnce(
+  name: string,
+  countryCode?: string,
+): Promise<GeocodeHit | null> {
+  const url = new URL("https://geocoding-api.open-meteo.com/v1/search");
+  url.searchParams.set("name", name);
+  url.searchParams.set("count", "1");
+  url.searchParams.set("language", "en");
+  url.searchParams.set("format", "json");
+  if (countryCode) url.searchParams.set("countryCode", countryCode);
+
+  let res: Response;
+  try {
+    res = await fetch(url.toString(), { cache: "no-store" });
+  } catch {
+    return null;
+  }
+  if (!res.ok) return null;
+
+  const data = (await res.json()) as {
+    results?: Array<{
+      name: string;
+      latitude: number;
+      longitude: number;
+      admin1?: string;
+      country?: string;
+    }>;
+  };
+  const r = data.results?.[0];
+  if (
+    !r ||
+    typeof r.latitude !== "number" ||
+    typeof r.longitude !== "number" ||
+    !Number.isFinite(r.latitude) ||
+    !Number.isFinite(r.longitude)
+  ) {
+    return null;
+  }
+
+  const parts = [r.name, r.admin1, r.country].filter(
+    (x): x is string => typeof x === "string" && x.length > 0,
+  );
+  const displayName = parts.length > 0 ? parts.join(", ") : name;
+
+  return { lat: r.latitude, lon: r.longitude, displayName };
+}
+
+/**
+ * Retry variants for Open-Meteo. US: "City, ST" / "…, Malibu, CA" → segment before 2-letter state + countryCode=US.
+ */
+function openMeteoSearchAttempts(q: string): Array<{ name: string; countryCode?: string }> {
+  const trimmed = q.trim();
+  const seen = new Set<string>();
+  const out: Array<{ name: string; countryCode?: string }> = [];
+
+  const add = (name: string, countryCode?: string) => {
+    const key = `${name}|${countryCode ?? ""}`;
+    if (seen.has(key) || name.length < 2) return;
+    seen.add(key);
+    out.push({ name, countryCode });
+  };
+
+  add(trimmed);
+
+  const segments = trimmed.split(",").map((s) => s.trim());
+  if (segments.length >= 2) {
+    const last = segments[segments.length - 1]!;
+    if (/^[A-Z]{2}$/i.test(last)) {
+      const place = segments[segments.length - 2]!;
+      if (place) add(place, "US");
+    }
+  }
+
+  if (segments.length >= 2) {
+    add(segments[0]!);
+  }
+
+  return out;
+}
+
+/** Fallback: Open-Meteo geocoding (no key; used when Nominatim fails). */
+async function geocodeOpenMeteo(q: string): Promise<GeocodeHit | null> {
+  for (const att of openMeteoSearchAttempts(q)) {
+    const hit = await searchOpenMeteoOnce(att.name, att.countryCode);
+    if (hit) return hit;
+  }
+  return null;
+}
+
 type WeatherSnapshot = {
   tempF: number;
   windMph: number;
@@ -142,54 +294,21 @@ export async function GET(req: Request) {
     );
   }
 
-  const nomUrl = new URL("https://nominatim.openstreetmap.org/search");
-  nomUrl.searchParams.set("q", q);
-  nomUrl.searchParams.set("format", "json");
-  nomUrl.searchParams.set("limit", "1");
+  let hit = parseLatLonQuery(q);
+  if (!hit) hit = await geocodeNominatim(q);
+  if (!hit) hit = await geocodeOpenMeteo(q);
 
-  let nomRes: Response;
-  try {
-    nomRes = await fetch(nomUrl.toString(), {
-      headers: {
-        "User-Agent": NOMINATIM_UA,
-        "Accept-Language": "en",
-        Accept: "application/json",
+  if (!hit) {
+    return NextResponse.json(
+      {
+        error:
+          "Could not resolve that location. Try again, shorten the query, or paste lat,lon.",
       },
-      cache: "no-store",
-    });
-  } catch {
-    return NextResponse.json(
-      { error: "Could not reach geocoder (network)." },
       { status: 502 },
     );
   }
 
-  if (!nomRes.ok) {
-    return NextResponse.json(
-      { error: "Geocoder service error. Try again in a moment." },
-      { status: 502 },
-    );
-  }
-
-  const results: unknown = await nomRes.json();
-  if (!Array.isArray(results) || results.length === 0) {
-    return NextResponse.json(
-      { error: "No location found for that search." },
-      { status: 404 },
-    );
-  }
-
-  const r0 = results[0] as Record<string, unknown>;
-  const lat = Number(r0.lat);
-  const lon = Number(r0.lon);
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-    return NextResponse.json(
-      { error: "Geocoder returned invalid coordinates." },
-      { status: 502 },
-    );
-  }
-
-  const displayName = String(r0.display_name ?? q);
+  const { lat, lon, displayName } = hit;
 
   const weather = await resolveWeather(lat, lon);
 
