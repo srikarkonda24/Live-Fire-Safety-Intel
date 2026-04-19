@@ -172,7 +172,7 @@ function syncUser(map: maplibregl.Map, pt: [number, number] | null | undefined) 
 export type FiresLayerStatus = "loading" | "ready" | "error";
 
 export type FiresOnlyMapProps = {
-  /** FIRMS timeline + layer preset; map refetches hotspots from `/api/firms` on pan/zoom. */
+  /** FIRMS timeline + layer preset; hotspots load once from `/api/firms` (no pan/zoom refetch). */
   firesTimeline: FirmsLayerTimeline;
   userLngLat?: [number, number] | null;
   routeWaypoints?: [number, number][] | null;
@@ -557,9 +557,8 @@ export const FiresOnlyMap = forwardRef<FiresOnlyMapHandle, FiresOnlyMapProps>(
 
     /**
      * Fetch once per effect (re)mount only — pan/zoom must never refetch, otherwise
-     * the layer flashes empty while the viewport-scoped reply is in flight.
-     * CONUS paints first; when `firesTimelineKey` flips to "global" the effect
-     * re-runs and the new fetch unions with the CONUS features already painted.
+     * the layer flashes empty while a new request is in flight. If the effect
+     * re-runs with prior features in memory, the first response unions with them.
      */
     runFetch();
 

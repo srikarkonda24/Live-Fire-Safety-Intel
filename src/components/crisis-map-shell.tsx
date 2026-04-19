@@ -131,9 +131,9 @@ export function CrisisMapShell() {
 
   /**
    * One global fetch for the whole world — no CONUS→global swap, so dots never
-   * "disappear" mid-transition. The map paints mock dots instantly while the
-   * real NASA response streams in, and the API route caches in memory so repeat
-   * loads are near-instant.
+   * "disappear" mid-transition. The shell shows a loading overlay until the map
+   * layer gets real FIRMS GeoJSON; `/api/firms` caches CSV in memory so repeat
+   * loads are fast.
    */
   const firesMapTimeline = useMemo((): FirmsLayerTimeline => {
     return {
