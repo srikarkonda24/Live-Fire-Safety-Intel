@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   FiresOnlyMap,
+  type FiresLayerStatus,
   type FiresOnlyMapHandle,
 } from "@/components/fires-only-map";
 import {
@@ -19,9 +20,7 @@ import {
   type LocationContextResponse,
 } from "@/lib/location-context-types";
 import {
-  buildContinentalUsFirmsApiUrl,
   buildFirmsApiUrl,
-  buildGlobalFirmsApiUrl,
   padBbox,
   type FirmsLayerTimeline,
 } from "@/lib/firms-url";
@@ -77,6 +76,9 @@ export function CrisisMapShell() {
   const [pendingAutoBrief, setPendingAutoBrief] = useState(false);
   /** Increments on each successful geocode so the map can zoom once per selection. */
   const [addressFocusVersion, setAddressFocusVersion] = useState(0);
+  /** Live NASA FIRMS fetch status reported by the map; drives the "Loading hotspots…" overlay. */
+  const [firesLayerStatus, setFiresLayerStatus] =
+    useState<FiresLayerStatus>("loading");
 
   const [debouncedAddressQuery, setDebouncedAddressQuery] = useState("");
   const geocodeSeqRef = useRef(0);
@@ -116,28 +118,6 @@ export function CrisisMapShell() {
     return resolveBriefingAnchor(addressInput);
   }, [pinnedAnchor, addressInput]);
 
-  /** Full-globe FIRMS (optional; often empty after cap / parse). */
-  const mapGlobalFirmsUrl = useMemo(
-    () =>
-      buildGlobalFirmsApiUrl({
-        days: 1,
-        maxPoints: 15_000,
-        date: firmsDateParam,
-      }),
-    [firmsDateParam],
-  );
-
-  /** Map layer: contiguous US so coast-to-coast hotspots show regardless of searched address. */
-  const mapConusFirmsUrl = useMemo(
-    () =>
-      buildContinentalUsFirmsApiUrl({
-        days: historySingleDay ? 1 : 2,
-        maxPoints: 22_000,
-        date: firmsDateParam,
-      }),
-    [firmsDateParam, historySingleDay],
-  );
-
   /** Briefing / nearest fire: tighter window around the pin (not used for map dots). */
   const regionalFirmsUrl = useMemo(() => {
     const b = padBbox(firmsAnchor.lon, firmsAnchor.lat, 14);
@@ -149,37 +129,20 @@ export function CrisisMapShell() {
     });
   }, [firmsAnchor, firmsDateParam, historySingleDay]);
 
-  /** Prefer global map; else always CONUS (not regional) so the whole US stays visible. */
-  const [mapUseGlobalLayer, setMapUseGlobalLayer] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    setMapUseGlobalLayer(false);
-    void (async () => {
-      const r = await fetch(mapGlobalFirmsUrl, { cache: "no-store" });
-      if (cancelled || !r.ok) return;
-      const j = (await r.json()) as { features?: unknown[] };
-      if (
-        !cancelled &&
-        Array.isArray(j.features) &&
-        j.features.length > 0
-      ) {
-        setMapUseGlobalLayer(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [mapGlobalFirmsUrl, mapConusFirmsUrl]);
-
+  /**
+   * One global fetch for the whole world — no CONUS→global swap, so dots never
+   * "disappear" mid-transition. The map paints mock dots instantly while the
+   * real NASA response streams in, and the API route caches in memory so repeat
+   * loads are near-instant.
+   */
   const firesMapTimeline = useMemo((): FirmsLayerTimeline => {
     return {
       date: firmsDateParam,
-      days: historySingleDay ? 1 : 2,
-      maxPoints: mapUseGlobalLayer ? 15_000 : 22_000,
-      layerPreset: mapUseGlobalLayer ? "global" : "conus",
+      days: historySingleDay ? 1 : 5,
+      maxPoints: 50_000,
+      layerPreset: "global",
     };
-  }, [firmsDateParam, historySingleDay, mapUseGlobalLayer]);
+  }, [firmsDateParam, historySingleDay]);
 
   useEffect(() => {
     let cancelled = false;
@@ -407,8 +370,40 @@ export function CrisisMapShell() {
           userLngLat={userLngLat}
           routeWaypoints={routeWaypoints}
           onMapReady={runMapFocusFromRef}
+          onFiresStatusChange={setFiresLayerStatus}
         />
       </div>
+
+      {firesLayerStatus !== "ready" ? (
+        <div
+          role="status"
+          aria-live="polite"
+          className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center"
+        >
+          <div
+            className={`flex items-center gap-2 rounded-full border px-3 py-1.5 font-mono text-[9px] font-semibold uppercase tracking-[0.22em] shadow-[0_4px_22px_rgba(0,0,0,0.45)] backdrop-blur-sm ${
+              firesLayerStatus === "error"
+                ? "border-red-500/45 bg-red-950/70 text-red-200"
+                : "border-orange-500/35 bg-zinc-950/80 text-orange-200"
+            }`}
+          >
+            {firesLayerStatus === "error" ? (
+              <>
+                <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
+                Fire data unavailable — retrying…
+              </>
+            ) : (
+              <>
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inset-0 animate-ping rounded-full bg-orange-400/70" />
+                  <span className="relative h-2 w-2 rounded-full bg-orange-400" />
+                </span>
+                Loading NASA fire hotspots…
+              </>
+            )}
+          </div>
+        </div>
+      ) : null}
 
       <TacticalHud
         briefing={briefing}

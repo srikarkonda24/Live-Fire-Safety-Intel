@@ -5,6 +5,56 @@ export const runtime = "nodejs";
 
 const FIRMS_BASE = "https://firms.modaps.eosdis.nasa.gov/api/area/csv";
 
+/**
+ * Process-memory cache for the raw FIRMS CSV. NASA's endpoint takes 3–8 s for
+ * a 5-day global query, so caching turns subsequent requests into <50 ms hits.
+ * TTL is short enough (10 min) that the map still shows near-real-time data.
+ */
+type CsvCacheEntry = { body: string; expires: number };
+const CSV_CACHE = new Map<string, CsvCacheEntry>();
+const CSV_IN_FLIGHT = new Map<string, Promise<string>>();
+const CSV_TTL_MS = 10 * 60 * 1000;
+
+async function fetchFirmsCsvCached(
+  firmsUrl: string,
+  now: number,
+): Promise<string> {
+  const hit = CSV_CACHE.get(firmsUrl);
+  if (hit && hit.expires > now) return hit.body;
+
+  const pending = CSV_IN_FLIGHT.get(firmsUrl);
+  if (pending) return pending;
+
+  const task = (async () => {
+    const ac = new AbortController();
+    const t = setTimeout(() => ac.abort(), 90_000);
+    try {
+      const res = await fetch(firmsUrl, {
+        signal: ac.signal,
+        headers: { Accept: "text/csv,*/*" },
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        const err = new Error(`FIRMS_HTTP_${res.status}`);
+        (err as { status?: number }).status = res.status;
+        throw err;
+      }
+      const body = await res.text();
+      if (body.includes("Error in processing") || body.includes("<html")) {
+        throw new Error("FIRMS_ERROR_PAGE");
+      }
+      CSV_CACHE.set(firmsUrl, { body, expires: now + CSV_TTL_MS });
+      return body;
+    } finally {
+      clearTimeout(t);
+      CSV_IN_FLIGHT.delete(firmsUrl);
+    }
+  })();
+
+  CSV_IN_FLIGHT.set(firmsUrl, task);
+  return task;
+}
+
 const ALLOWED_SOURCES = new Set([
   "VIIRS_SNPP_NRT",
   "VIIRS_SNPP_SP",
@@ -77,24 +127,26 @@ export async function GET(req: Request) {
 
   let text: string;
   try {
-    const ac = new AbortController();
-    const t = setTimeout(() => ac.abort(), 90_000);
-    const res = await fetch(firmsUrl, {
-      signal: ac.signal,
-      headers: { Accept: "text/csv,*/*" },
-      cache: "no-store",
-    });
-    clearTimeout(t);
-    if (!res.ok) {
+    text = await fetchFirmsCsvCached(firmsUrl, Date.now());
+  } catch (err) {
+    const status = (err as { status?: number }).status;
+    if (status) {
       return NextResponse.json(
         {
-          error: `FIRMS request failed (${res.status}). Try a smaller bounding box or fewer days.`,
+          error: `FIRMS request failed (${status}). Try a smaller bounding box or fewer days.`,
         },
         { status: 502 },
       );
     }
-    text = await res.text();
-  } catch {
+    if ((err as Error).message === "FIRMS_ERROR_PAGE") {
+      return NextResponse.json(
+        {
+          error:
+            "FIRMS returned an error page. Check MAP_KEY, source, bbox, and day range.",
+        },
+        { status: 502 },
+      );
+    }
     return NextResponse.json(
       {
         error:
@@ -104,22 +156,12 @@ export async function GET(req: Request) {
     );
   }
 
-  if (text.includes("Error in processing") || text.includes("<html")) {
-    return NextResponse.json(
-      {
-        error:
-          "FIRMS returned an error page. Check MAP_KEY, source, bbox, and day range.",
-      },
-      { status: 502 },
-    );
-  }
-
   const fc = parseFirmsAreaCsv(text, maxPoints);
 
   const cacheControl =
     fc.features.length === 0
       ? "no-store"
-      : "public, max-age=60, s-maxage=120, stale-while-revalidate=300";
+      : "public, max-age=60, s-maxage=300, stale-while-revalidate=600";
 
   return NextResponse.json(fc, {
     headers: { "Cache-Control": cacheControl },

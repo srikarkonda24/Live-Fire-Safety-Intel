@@ -137,7 +137,7 @@ export function buildFirmsUrlForViewport(
     });
   }
 
-  /** Large pad so one response covers nearby pans; map clips client-side for instant motion. */
+  /** Large pad so one response covers nearby pans before the next `moveend` refetch. */
   const padLon = Math.max(0.55, lonSpan * 0.42);
   const padLat = Math.max(0.45, latSpan * 0.42);
 

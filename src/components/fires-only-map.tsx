@@ -18,53 +18,6 @@ import type { FirmsFeatureCollection } from "@/lib/firms-csv";
 
 type FireFeature = FirmsFeatureCollection["features"][number];
 
-function parseFirmsQueryBbox(url: string): {
-  west: number;
-  south: number;
-  east: number;
-  north: number;
-} | null {
-  try {
-    const u = new URL(url, "http://local");
-    const west = Number(u.searchParams.get("west"));
-    const south = Number(u.searchParams.get("south"));
-    const east = Number(u.searchParams.get("east"));
-    const north = Number(u.searchParams.get("north"));
-    if (![west, south, east, north].every((x) => Number.isFinite(x))) return null;
-    return { west, south, east, north };
-  } catch {
-    return null;
-  }
-}
-
-function viewInsideQueryBbox(
-  view: { west: number; south: number; east: number; north: number },
-  query: { west: number; south: number; east: number; north: number },
-  slack = 0.08,
-): boolean {
-  return (
-    view.west >= query.west - slack &&
-    view.east <= query.east + slack &&
-    view.south >= query.south - slack &&
-    view.north <= query.north + slack
-  );
-}
-
-function filterFeaturesToMapBounds(
-  features: FireFeature[],
-  b: maplibregl.LngLatBounds,
-): FireFeature[] {
-  const w = b.getWest();
-  const e = b.getEast();
-  const s = b.getSouth();
-  const n = b.getNorth();
-  return features.filter((f) => {
-    if (f.geometry?.type !== "Point") return false;
-    const [lon, lat] = f.geometry.coordinates;
-    return lon >= w && lon <= e && lat >= s && lat <= n;
-  });
-}
-
 const BASE_STYLE = {
   version: 8,
   name: "Dark basemap",
@@ -216,6 +169,8 @@ function syncUser(map: maplibregl.Map, pt: [number, number] | null | undefined) 
   }
 }
 
+export type FiresLayerStatus = "loading" | "ready" | "error";
+
 export type FiresOnlyMapProps = {
   /** FIRMS timeline + layer preset; map refetches hotspots from `/api/firms` on pan/zoom. */
   firesTimeline: FirmsLayerTimeline;
@@ -225,6 +180,8 @@ export type FiresOnlyMapProps = {
   mapFocusBounds?: MapFocusBBox | null;
   /** Fires once when the map style has finished loading (e.g. retry camera after remount). */
   onMapReady?: () => void;
+  /** Reports the live NASA FIRMS fetch state so the shell can show a loading overlay. */
+  onFiresStatusChange?: (status: FiresLayerStatus) => void;
 };
 
 export type FiresOnlyMapHandle = {
@@ -247,6 +204,7 @@ export const FiresOnlyMap = forwardRef<FiresOnlyMapHandle, FiresOnlyMapProps>(
       routeWaypoints = null,
       mapFocusBounds = null,
       onMapReady,
+      onFiresStatusChange,
     }: FiresOnlyMapProps,
     ref,
   ) {
@@ -254,15 +212,15 @@ export const FiresOnlyMap = forwardRef<FiresOnlyMapHandle, FiresOnlyMapProps>(
   const mapRef = useRef<maplibregl.Map | null>(null);
   const firesTimelineRef = useRef(firesTimeline);
   firesTimelineRef.current = firesTimeline;
-  const firesCacheRef = useRef<{
-    query: { west: number; south: number; east: number; north: number };
-    features: FireFeature[];
-  } | null>(null);
+  /** Persist across effect remounts so CONUS→global swaps can union, not replace. */
+  const lastFeaturesRef = useRef<FireFeature[]>([]);
   const refreshFiresRef = useRef<(() => void) | null>(null);
   const routeWpRef = useRef(routeWaypoints);
   routeWpRef.current = routeWaypoints;
   const onMapReadyRef = useRef(onMapReady);
   onMapReadyRef.current = onMapReady;
+  const onFiresStatusChangeRef = useRef(onFiresStatusChange);
+  onFiresStatusChangeRef.current = onFiresStatusChange;
   const [mapReady, setMapReady] = useState(false);
 
   const firesTimelineKey = [
@@ -439,9 +397,15 @@ export const FiresOnlyMap = forwardRef<FiresOnlyMapHandle, FiresOnlyMapProps>(
       map.resize();
       requestAnimationFrame(() => map.resize());
 
+      /**
+       * Start empty. The shell shows a loading overlay until the first real
+       * FIRMS response resolves; no mock seed data is painted.
+       */
+      const seedFeatures =
+        lastFeaturesRef.current.length > 0 ? lastFeaturesRef.current : [];
       map.addSource("fires", {
         type: "geojson",
-        data: { type: "FeatureCollection", features: [] },
+        data: { type: "FeatureCollection", features: seedFeatures },
       });
 
       map.addLayer({
@@ -499,13 +463,11 @@ export const FiresOnlyMap = forwardRef<FiresOnlyMapHandle, FiresOnlyMapProps>(
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!mapReady || !map?.loaded() || !map.getSource("fires")) return;
-
-    firesCacheRef.current = null;
+    if (!mapReady || !map || !map.getSource("fires")) return;
 
     let abort: AbortController | null = null;
-    let clipRaf = 0;
-    let dragFetchT = 0;
+    /** First fetch after an effect (re)mount unions with what’s already painted. */
+    let firstFetchAfterMount = true;
 
     const setFc = (
       src: maplibregl.GeoJSONSource,
@@ -516,10 +478,27 @@ export const FiresOnlyMap = forwardRef<FiresOnlyMapHandle, FiresOnlyMapProps>(
       );
     };
 
+    const unionFeatures = (
+      prev: FireFeature[],
+      next: FireFeature[],
+    ): FireFeature[] => {
+      const seen = new Set<string>();
+      const out: FireFeature[] = [];
+      for (const f of [...prev, ...next]) {
+        const c = f.geometry?.coordinates;
+        if (!Array.isArray(c) || c.length < 2) continue;
+        const k = `${c[1].toFixed(4)}|${c[0].toFixed(4)}`;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        out.push(f);
+      }
+      return out;
+    };
+
     const runFetch = () => {
       const m = mapRef.current;
       const firesSrc = m?.getSource("fires") as maplibregl.GeoJSONSource | undefined;
-      if (!m?.loaded() || !firesSrc) return;
+      if (!m || !firesSrc) return;
 
       const b = m.getBounds();
       const url = buildFirmsUrlForViewport(
@@ -537,89 +516,55 @@ export const FiresOnlyMap = forwardRef<FiresOnlyMapHandle, FiresOnlyMapProps>(
       abort = new AbortController();
       const { signal } = abort;
 
+      /** Only flip to "loading" if nothing is painted yet; avoid flashing the overlay on refetch. */
+      if (lastFeaturesRef.current.length === 0) {
+        onFiresStatusChangeRef.current?.("loading");
+      }
+
       void (async () => {
         try {
           const res = await fetch(url, { cache: "no-store", signal });
-          if (!res.ok) return;
+          if (signal.aborted) return;
+          if (!res.ok) {
+            onFiresStatusChangeRef.current?.("error");
+            return;
+          }
           const fc = (await res.json()) as FirmsFeatureCollection;
           if (signal.aborted) return;
           const target = mapRef.current?.getSource("fires") as
             | maplibregl.GeoJSONSource
             | undefined;
           if (!target) return;
-          const qb = parseFirmsQueryBbox(url);
-          if (qb && Array.isArray(fc.features)) {
-            firesCacheRef.current = { query: qb, features: fc.features };
+          if (!Array.isArray(fc.features) || fc.features.length === 0) {
+            onFiresStatusChangeRef.current?.("error");
+            return;
           }
-          setFc(target, fc);
+          const merged =
+            firstFetchAfterMount && lastFeaturesRef.current.length > 0
+              ? unionFeatures(lastFeaturesRef.current, fc.features)
+              : fc.features;
+          firstFetchAfterMount = false;
+          lastFeaturesRef.current = merged;
+          setFc(target, { type: "FeatureCollection", features: merged });
+          onFiresStatusChangeRef.current?.("ready");
         } catch {
-          /* keep existing dots on abort / network */
+          if (!signal.aborted) onFiresStatusChangeRef.current?.("error");
         }
       })();
     };
 
     refreshFiresRef.current = runFetch;
 
-    const scheduleClip = () => {
-      if (clipRaf) cancelAnimationFrame(clipRaf);
-      clipRaf = requestAnimationFrame(() => {
-        clipRaf = 0;
-        const m = mapRef.current;
-        const firesSrc = m?.getSource("fires") as maplibregl.GeoJSONSource | undefined;
-        if (!m?.loaded() || !firesSrc) return;
-        const vb = m.getBounds();
-        const view = {
-          west: vb.getWest(),
-          south: vb.getSouth(),
-          east: vb.getEast(),
-          north: vb.getNorth(),
-        };
-        const cache = firesCacheRef.current;
-        if (cache && viewInsideQueryBbox(view, cache.query)) {
-          const clipped: FirmsFeatureCollection = {
-            type: "FeatureCollection",
-            features: filterFeaturesToMapBounds(cache.features, vb),
-          };
-          setFc(firesSrc, clipped);
-          return;
-        }
-        window.clearTimeout(dragFetchT);
-        dragFetchT = window.setTimeout(() => runFetch(), 85);
-      });
-    };
-
-    const onZoom = () => {
-      window.clearTimeout(dragFetchT);
-      cancelAnimationFrame(clipRaf);
-      clipRaf = 0;
-      runFetch();
-    };
-
-    const onMoveEnd = () => {
-      window.clearTimeout(dragFetchT);
-      runFetch();
-    };
-
-    const onResize = () => {
-      window.clearTimeout(dragFetchT);
-      runFetch();
-    };
-
-    map.on("zoomend", onZoom);
-    map.on("moveend", onMoveEnd);
-    map.on("move", scheduleClip);
-    map.on("resize", onResize);
+    /**
+     * Fetch once per effect (re)mount only — pan/zoom must never refetch, otherwise
+     * the layer flashes empty while the viewport-scoped reply is in flight.
+     * CONUS paints first; when `firesTimelineKey` flips to "global" the effect
+     * re-runs and the new fetch unions with the CONUS features already painted.
+     */
     runFetch();
 
     return () => {
       refreshFiresRef.current = null;
-      firesCacheRef.current = null;
-      map.off("zoomend", onZoom);
-      map.off("moveend", onMoveEnd);
-      map.off("move", scheduleClip);
-      map.off("resize", onResize);
-      cancelAnimationFrame(clipRaf);
-      window.clearTimeout(dragFetchT);
       abort?.abort();
     };
   }, [mapReady, firesTimelineKey]);

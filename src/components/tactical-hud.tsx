@@ -14,11 +14,21 @@ const HUD_TOP = "top-[1.25rem]";
 const hudShell =
   "hud-panel font-tactical absolute z-[55] flex max-h-[min(calc(100vh-3rem),52rem)] flex-col overflow-hidden rounded-sm text-[8px] leading-tight text-zinc-300";
 
+/** Wider + taller + larger type than MET panel */
+const intelHudShell =
+  "hud-panel font-tactical absolute z-[55] flex max-h-[min(calc(100vh-2.5rem),58rem)] flex-col overflow-hidden rounded-sm text-[10px] leading-snug text-zinc-300";
+
 const hdr =
   "font-mono text-[6px] font-bold uppercase tracking-[0.1em] text-amber-500/80";
 
+const intelHdr =
+  "font-mono text-[8px] font-bold uppercase tracking-[0.1em] text-amber-500/80";
+
 const subHdr =
   "mb-0 font-mono text-[6px] font-bold uppercase tracking-[0.1em] text-zinc-500";
+
+const intelSubHdr =
+  "mb-0 font-mono text-[8px] font-bold uppercase tracking-[0.1em] text-zinc-500";
 
 function ActionChevron() {
   return (
@@ -196,19 +206,19 @@ export function TacticalHud({
 
       {intelOpen ? (
         <div
-          className={`${hudShell} left-5 w-[300px] ${HUD_TOP} ${aiLoading ? "intel-regen-pulse" : ""}`}
+          className={`${intelHudShell} left-5 w-[min(420px,calc(100vw-3rem))] ${HUD_TOP} ${aiLoading ? "intel-regen-pulse" : ""}`}
         >
-          <div className="flex shrink-0 items-start justify-between gap-2 border-b border-[rgba(255,255,255,0.1)] px-2 py-1">
+          <div className="flex shrink-0 items-start justify-between gap-2 border-b border-[rgba(255,255,255,0.1)] px-2.5 py-1.5">
             <div className="min-w-0 pt-0.5">
-              <p className={`${hdr} text-amber-400/75`}>INTEL / CLAUDE</p>
+              <p className={`${intelHdr} text-amber-400/75`}>INTEL / CLAUDE</p>
               {displayRisk ? (
                 <span
-                  className={`mt-1 inline-flex rounded-full border bg-transparent px-1.5 py-px font-mono text-[7px] font-bold uppercase tracking-[0.1em] ${riskPillClass(displayRisk)}`}
+                  className={`mt-1 inline-flex rounded-full border bg-transparent px-2 py-0.5 font-mono text-[9px] font-bold uppercase tracking-[0.1em] ${riskPillClass(displayRisk)}`}
                 >
                   Risk · {displayRisk}
                 </span>
               ) : (
-                <span className="mt-1 inline-flex rounded-full border border-zinc-500/40 bg-transparent px-1.5 py-px font-mono text-[7px] uppercase tracking-[0.1em] text-zinc-500">
+                <span className="mt-1 inline-flex rounded-full border border-zinc-500/40 bg-transparent px-2 py-0.5 font-mono text-[9px] uppercase tracking-[0.1em] text-zinc-500">
                   Risk · —
                 </span>
               )}
@@ -218,7 +228,7 @@ export function TacticalHud({
               <button
                 type="button"
                 onClick={() => setIntelOpen(false)}
-                className="flex h-6 w-6 shrink-0 items-center justify-center rounded border border-[rgba(255,255,255,0.12)] bg-transparent text-sm leading-none text-zinc-400 hover:border-white/25 hover:text-zinc-100"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded border border-[rgba(255,255,255,0.12)] bg-transparent text-base leading-none text-zinc-400 hover:border-white/25 hover:text-zinc-100"
                 aria-label="Minimize intelligence panel"
               >
                 −
@@ -226,8 +236,8 @@ export function TacticalHud({
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-hidden px-2 py-1">
-            <p className="text-[7px] leading-snug text-zinc-500">
+          <div className="min-h-0 flex-1 overflow-hidden px-2.5 py-1.5">
+            <p className="text-[9px] leading-snug text-zinc-500">
               Pin from{" "}
               <span className="text-amber-500/75">location</span> below.
             </p>
@@ -237,7 +247,7 @@ export function TacticalHud({
                   type="button"
                   onClick={onRegenerateAi}
                   disabled={aiLoading || geocoding || firesLoading}
-                  className="rounded border border-[rgba(255,255,255,0.12)] bg-transparent px-1.5 py-0.5 font-mono text-[7px] font-semibold uppercase tracking-[0.1em] text-zinc-300 hover:border-white/20 disabled:opacity-40"
+                  className="rounded border border-[rgba(255,255,255,0.12)] bg-transparent px-2 py-1 font-mono text-[9px] font-semibold uppercase tracking-[0.1em] text-zinc-300 hover:border-white/20 disabled:opacity-40"
                 >
                   {aiLoading ? "Regenerating…" : "Regen AI"}
                 </button>
@@ -246,24 +256,24 @@ export function TacticalHud({
                 <button
                   type="button"
                   onClick={onClearPin}
-                  className="rounded border border-[rgba(255,255,255,0.1)] bg-transparent px-1.5 py-0.5 font-mono text-[7px] uppercase tracking-[0.1em] text-zinc-500 hover:text-zinc-200"
+                  className="rounded border border-[rgba(255,255,255,0.1)] bg-transparent px-2 py-1 font-mono text-[9px] uppercase tracking-[0.1em] text-zinc-500 hover:text-zinc-200"
                 >
                   Clear pin
                 </button>
               ) : null}
             </div>
             {geocoding ? (
-              <p className="mt-0.5 font-mono text-[7px] text-orange-300/85">
+              <p className="mt-0.5 font-mono text-[9px] text-orange-300/85">
                 Geocoding…
               </p>
             ) : null}
             {geocodeError ? (
-              <p className="mt-1 rounded border border-red-500/35 bg-red-950/20 px-1.5 py-1 font-mono text-[7px] leading-snug text-red-300">
+              <p className="mt-1 rounded border border-red-500/35 bg-red-950/20 px-2 py-1.5 font-mono text-[9px] leading-snug text-red-300">
                 Location lookup failed: {geocodeError}
               </p>
             ) : null}
             {safetyBriefUpdated ? (
-              <p className="mt-0.5 font-mono text-[6px] tabular-nums text-amber-600/90">
+              <p className="mt-0.5 font-mono text-[8px] tabular-nums text-amber-600/90">
                 {safetyBriefUpdated}
               </p>
             ) : null}
@@ -271,11 +281,11 @@ export function TacticalHud({
             <div className="mt-1.5 border-t border-[rgba(255,255,255,0.08)] pt-1.5">
               {!briefing ? (
                 aiLoading ? (
-                  <p className="py-2 text-center font-mono text-[9px] text-amber-200/55">
+                  <p className="py-2 text-center font-mono text-[11px] text-amber-200/55">
                     UPLINK…
                   </p>
                 ) : (
-                  <p className="py-2 text-center font-mono text-[8px] text-zinc-500">
+                  <p className="py-2 text-center font-mono text-[10px] text-zinc-500">
                     {aiError ? (
                       <span className="text-red-400">{aiError}</span>
                     ) : (
@@ -287,43 +297,43 @@ export function TacticalHud({
                   </p>
                 )
               ) : (
-                <div className="space-y-1.5">
-                  <div className="grid grid-cols-2 font-mono text-[7px] leading-tight text-amber-100/95">
-                    <div className="border-b border-r border-[rgba(255,255,255,0.1)] py-1 pr-1">
-                      <p className={subHdr}>Fire</p>
+                <div className="space-y-2">
+                  <div className="grid grid-cols-2 font-mono text-[9px] leading-tight text-amber-100/95">
+                    <div className="border-b border-r border-[rgba(255,255,255,0.1)] py-1.5 pr-1.5">
+                      <p className={intelSubHdr}>Fire</p>
                       <p className="tabular-nums text-amber-200/95">
                         {briefing.miles != null
                           ? `${briefing.miles.toFixed(1)} mi`
                           : "—"}
                       </p>
                       {briefing.nearest ? (
-                        <p className="truncate text-[6px] text-zinc-500">
+                        <p className="truncate text-[8px] text-zinc-500">
                           {briefing.nearest.name}
                         </p>
                       ) : null}
                     </div>
-                    <div className="border-b border-[rgba(255,255,255,0.1)] py-1 pl-1">
-                      <p className={subHdr}>Wind</p>
+                    <div className="border-b border-[rgba(255,255,255,0.1)] py-1.5 pl-1.5">
+                      <p className={intelSubHdr}>Wind</p>
                       <p className="tabular-nums text-amber-200/95">
                         {briefing.anchor.weather.windMph} mph
                       </p>
-                      <p className="text-[6px] text-zinc-500">
+                      <p className="text-[8px] text-zinc-500">
                         {briefing.anchor.weather.windFromTo}
                       </p>
                     </div>
-                    <div className="border-r border-[rgba(255,255,255,0.1)] py-1 pr-1">
-                      <p className={subHdr}>Temp</p>
+                    <div className="border-r border-[rgba(255,255,255,0.1)] py-1.5 pr-1.5">
+                      <p className={intelSubHdr}>Temp</p>
                       <p className="tabular-nums text-amber-200/95">
                         {briefing.anchor.weather.tempF}°F
                       </p>
                     </div>
-                    <div className="py-1 pl-1">
-                      <p className={subHdr}>ETA</p>
+                    <div className="py-1.5 pl-1.5">
+                      <p className={intelSubHdr}>ETA</p>
                       <p className="tabular-nums text-amber-200/95">
                         {briefing.etaMin != null ? `${briefing.etaMin}m` : "—"}
                       </p>
                       {demoEtaHoursLabel(briefing.etaMin) ? (
-                        <p className="text-[6px] text-zinc-500">
+                        <p className="text-[8px] text-zinc-500">
                           {demoEtaHoursLabel(briefing.etaMin)}
                         </p>
                       ) : null}
@@ -333,40 +343,40 @@ export function TacticalHud({
                   {safetyBrief ? (
                     <>
                       {aiError ? (
-                        <p className="border-l-2 border-red-500/45 pl-1.5 font-mono text-[7px] text-red-300">
+                        <p className="border-l-2 border-red-500/45 pl-2 font-mono text-[9px] text-red-300">
                           {aiError}
                         </p>
                       ) : null}
-                      <section className="border-t border-[rgba(255,255,255,0.08)] pt-1">
-                        <h3 className={hdr}>Situation</h3>
+                      <section className="border-t border-[rgba(255,255,255,0.08)] pt-1.5">
+                        <h3 className={intelHdr}>Situation</h3>
                         <p
-                          className="mt-0.5 line-clamp-[10] whitespace-pre-line text-[7px] leading-[1.2] text-amber-50/90"
+                          className="mt-0.5 line-clamp-[14] whitespace-pre-line text-[9px] leading-[1.25] text-amber-50/90"
                           title={safetyBrief.situation}
                         >
                           {safetyBrief.situation}
                         </p>
                       </section>
-                      <section className="border-t border-[rgba(255,255,255,0.08)] pt-1">
-                        <h3 className={hdr}>Why</h3>
+                      <section className="border-t border-[rgba(255,255,255,0.08)] pt-1.5">
+                        <h3 className={intelHdr}>Why</h3>
                         <p
-                          className="mt-0.5 line-clamp-5 text-[7px] leading-[1.25] text-amber-50/88"
+                          className="mt-0.5 line-clamp-8 text-[9px] leading-[1.3] text-amber-50/88"
                           title={safetyBrief.reasoning}
                         >
                           {safetyBrief.reasoning}
                         </p>
                       </section>
-                      <section className="border-t border-[rgba(255,255,255,0.08)] pt-1">
-                        <h3 className={hdr}>Meaning</h3>
+                      <section className="border-t border-[rgba(255,255,255,0.08)] pt-1.5">
+                        <h3 className={intelHdr}>Meaning</h3>
                         <p
-                          className="mt-0.5 line-clamp-5 text-[7px] leading-[1.2] text-amber-50/88"
+                          className="mt-0.5 line-clamp-8 text-[9px] leading-[1.25] text-amber-50/88"
                           title={safetyBrief.whatThisMeans}
                         >
                           {safetyBrief.whatThisMeans}
                         </p>
                       </section>
-                      <section className="border-t border-[rgba(255,255,255,0.08)] pt-1">
-                        <h3 className={hdr}>Actions</h3>
-                        <ul className="mt-0.5 list-none space-y-0.5 text-[7px] leading-[1.25] text-amber-100/92">
+                      <section className="border-t border-[rgba(255,255,255,0.08)] pt-1.5">
+                        <h3 className={intelHdr}>Actions</h3>
+                        <ul className="mt-0.5 list-none space-y-1 text-[9px] leading-[1.3] text-amber-100/92">
                           {topActions.map((a, i) => (
                             <li key={i} className="flex gap-1">
                               <ActionChevron />
@@ -377,17 +387,17 @@ export function TacticalHud({
                       </section>
                     </>
                   ) : aiLoading ? (
-                    <p className="py-1.5 text-center font-mono text-[9px] text-amber-200/55">
+                    <p className="py-1.5 text-center font-mono text-[11px] text-amber-200/55">
                       AI brief incoming…
                     </p>
                   ) : (
                     <div className="border-t border-[rgba(255,255,255,0.08)] pt-1.5 text-center">
                       {aiError ? (
-                        <p className="font-mono text-[7px] text-red-400">
+                        <p className="font-mono text-[9px] text-red-400">
                           {aiError}
                         </p>
                       ) : (
-                        <p className="font-mono text-[7px] text-zinc-500">
+                        <p className="font-mono text-[9px] text-zinc-500">
                           Use <span className="text-amber-500/80">Regen AI</span>{" "}
                           for Situation / Why / Actions.
                         </p>
@@ -397,7 +407,7 @@ export function TacticalHud({
                 </div>
               )}
             </div>
-            <p className="mt-1 border-t border-[rgba(255,255,255,0.06)] pt-1 text-center font-mono text-[6px] text-zinc-600">
+            <p className="mt-1 border-t border-[rgba(255,255,255,0.06)] pt-1 text-center font-mono text-[8px] text-zinc-600">
               © OpenStreetMap · Not guidance
             </p>
           </div>
